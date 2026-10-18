@@ -253,6 +253,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .feat.done .mark { border-color: var(--good); }
 .feat .sub { display: block; color: var(--mute); font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .pulse, .slot.flash, .lootcard { animation: none !important; } }
+@media (max-width: 760px) { #lootStack { max-width: min(300px, calc(100vw - 32px)); } #lootStack .lootcard:nth-last-child(n+3) { display: none; } .lootcard small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
 
 /* contracts and perks */
 .contract { background: var(--plate); padding: 9px 12px; display: grid; gap: 5px; border-left: 2px solid var(--shield); }
@@ -2130,10 +2131,11 @@ function lootCard(it, gain) {
   const st = $("lootStack"); if (!st) return;
   const el = document.createElement("div");
   el.className = "lootcard"; el.style.setProperty("--lc", RCOL[it.rarity]);
-  el.innerHTML = `<b>${icon(slotIcon(it.slot, S.race), RCOL[it.rarity], 14)} ${esc(it.name)}</b><small>${RARITY[it.rarity].name} ${SLOT_LABEL[it.slot].toLowerCase()} · ${itemLine(it)}</small>${gain > 0.001 ? `<span class="up">+${(gain * 100).toFixed(1)}% power${S.pol.autopilot && S.pol.equip ? ", equipping" : ""}</span>` : ""}`;
+  el.innerHTML = `<b>${icon(slotIcon(it.slot, S.race), RCOL[it.rarity], 14)} ${esc(it.name)}</b><small>${RARITY[it.rarity].name} ${SLOT_LABEL[it.slot].toLowerCase()} · ${itemLine(it)}</small>${gain > 0.001 ? `<span class="up">+${gain >= 1 ? Math.round(gain * 100) : (gain * 100).toFixed(1)}% power${S.pol.autopilot && S.pol.equip ? ", equipping" : ""}</span>` : ""}`;
   st.appendChild(el);
-  while (st.children.length > 4) st.removeChild(st.firstChild);
-  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 450); }, it.rarity >= 3 ? 7000 : 4500);
+  const phone = window.innerWidth <= 760;
+  while (st.children.length > (phone ? 2 : 4)) st.removeChild(st.firstChild);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 450); }, (it.rarity >= 3 ? 7000 : 4500) * (phone ? 0.7 : 1));
 }
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
 
