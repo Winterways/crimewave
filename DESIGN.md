@@ -64,6 +64,9 @@ with the current policies, then shows a "While you were away" summary.
 - Saves carry a version, are validated and clamped on load (bad numbers, broken items, unknown modes), and a rolling
   backup copy is written every minute and used if the main save fails to parse.
 - An error inside one simulation step is logged and the current fight dropped instead of freezing the loop.
+- A saved foe missing its numbers or `dots` array is discarded on load (it used to crash the renderer every frame); zones
+  you have earned by beating bosses stay open even if the save lost its `unlocked` counter, and the current zone is
+  clamped to what is unlocked.
 - Offline catch-up uses 1-second steps past the first hour; an 8-hour return simulates in about a second.
 - The autopilot gets a decision tick right after rests and kills, and rests up to 92% before a boss or instance it
   wants to take on. Before this, heroes without self-healing could sit at 50-90% health forever and never meet the
@@ -71,7 +74,10 @@ with the current policies, then shows a "While you were away" summary.
 
 ## Balance
 Foes are tuned against a reference hero of the same level, so an even fight is ~7s and costs ~25%
-health before abilities. Headless sims of all 9 classes on full autopilot reach Amon in roughly
+health before abilities. The first levels are deliberately softer: enemies below level 5 have 78–100% of their
+nominal stats, the xp curve ramps from 28% of its full value at level 1 to 100% at level 12, and the second and
+sixth kills always drop an item. A new hero now reaches level 2 in 30–60 s, level 5 in 4–10 min and the first boss
+in 10–28 min (it was 3–4 min to level 2 and 25–40 min to the first boss); the time to Amon is unchanged. Headless sims of all 9 classes on full autopilot reach Amon in roughly
 4–7 hours of play time (see Feel below), with tankier/faster classes at the quick end. Dungeons usually open up around
 hour 1–2, once a tank or healer companion has joined.
 
