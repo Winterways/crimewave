@@ -9,6 +9,20 @@ non-commercial fan project (StarCraft is Blizzard's IP).
 Open `index.html`. That's the whole game: one file, no server, saves in the browser's local storage (with export/import
 codes in the Codex). Up to three heroes per browser; click the hero's name at the top to switch. `game.html` is the source; `node build.js` regenerates `index.html` and `dist/index.html`.
 
+## What is in the game
+
+- Three races and nine classes, each with its own abilities, talents and research building; eight zones from Mar Sara
+  to the Void, each with quests, a boss and a storyline told by that race's own quest givers.
+- An autopilot driven by policies (Autopilot tab) that fights, rests, flees, equips, researches, crafts, mines, runs
+  dungeons after rehearsing them, challenges bosses on a safety margin, advances zones and can ascend. Per-zone plans on
+  the Map tab hold it in a zone or add mining there.
+- Dungeons and raids with seven companions from the lore, each with a signature ability, and a forecast of your odds
+  before you enter.
+- Professions (mining, salvaging, crafting, stims), rotating contracts, world events, bounty elites, kill streaks,
+  ranks, feats, ascension perks and a daily check-in with a streak.
+- Up to three heroes per browser, offline catch-up of up to eight hours, a Codex with a bestiary and your record, a
+  first-hour tip strip, synthesized sound effects and a per-zone ambience bed, all drawn and synthesized in code.
+
 ## Desktop client (Windows, macOS, Linux)
 
 `src-tauri/` wraps the same `dist/index.html` in a [Tauri 2](https://v2.tauri.app) window: a small native shell around
@@ -47,7 +61,7 @@ in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). Bundles
 ### Where the save is
 
 The desktop app keeps its own local storage, separate from any browser. To move a hero between browser and desktop,
-use **Export** in one and **Import** in the other (Hero panel). On Windows the data lives under
+use **Export save** in one and **Import** in the other (Codex tab, Save data card). On Windows the data lives under
 `%LOCALAPPDATA%\com.winterways.kopruluidle\`.
 
 ### Updating the icon
