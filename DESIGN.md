@@ -37,6 +37,16 @@ Mengsk). Quest titles, briefs, the arrival greeting and the decisions feed all u
 - Rewards: extra loot (rare+ from dungeon bosses, epic+ from raid bosses) and Valor, spent on companion bonds
   (+10% companion power per rank, max 10). Bonds carry over through ascension.
 
+Each companion has a signature ability that fires on its own every 14–20 s of instance combat (`SIGNATURES`): Raynor's
+Suppressing Fire (burst plus a 1 s stun), Kerrigan's Psionic Lash (7 s of her damage), Zeratul's Shadow Ambush (burst plus
+3 s of hero dodge), Tassadar's Khala's Embrace (party heal 15%), Fenix's Dragoon Shell (6 s taunt plus a self repair),
+Morales' Stim Dispenser (heal the lowest ally 30%, 15 hero energy) and Dehaka's Devour Essence (bite plus regrowth).
+Damage is expressed in seconds of the companion's dps and heals as fractions of max health, so bonds, essence and
+Bloodline scale them. Headless trials of the Aiur raid with a tank and healer: clearable from level 17 with signatures,
+level 20 without; higher dungeons were already cleared at both settings. The autopilot rehearses before entering, so the
+practical effect is that it takes parties in two to three levels earlier. Each use floats the ability name over the
+companion in the scene; the Dungeons tab and Codex list the signatures.
+
 ## Ability choice
 Each class has 6 abilities: 3 from the start, then one each at levels 10, 20 and 30. Three can be slotted
 (keys 1-3 fire the slots). Slotting one yourself switches off the autopilot's ability picking.
