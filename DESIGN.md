@@ -304,6 +304,10 @@ The header's experience bar and the top of the Quests tab say "Level 8 in about 
 
 The Codex has a Controls card and `?` opens the same hotkey list in a window; Esc closes any window. Export can download the save as a text file (through the viewer's downloads capability inside claude.ai, where a plain link is blocked, and an ordinary link elsewhere) and Import can open one. The Gear tab sells every non-upgrade in one press. The Quests and Dungeons tabs show a dot when a boss or instance is waiting and the autopilot's rule for it is off. The away report lists the level span, bosses defeated, best find and feats by name under the numbers.
 
+## Titles
+
+Nineteen feats also name the hero: Brood Breaker, the Veteran, the Juggernaut, the God Slayer, the Ascended and so on (`TITLES`). The newest is worn as it is earned (the feat banner says so, the Chronicle records it) unless the player turns that off or picks one in the Codex's Titles card, which also lists the next titles to earn. The title shows beside the name in the header and in the roster, and carries through ascension with the feats.
+
 ## Codex and bestiary
 The Codex lists every zone you have seen with its three enemies and your kill count for each; after five kills the entry
 reveals a line of field intel (24 entries, plus the boss once beaten). Companions you have met are listed with their bond
