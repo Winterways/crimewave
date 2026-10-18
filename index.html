@@ -966,6 +966,11 @@ const FEATS = [
   { id: "events10", name: "Storm Chaser", desc: "See 10 world events", valor: 10, test: s => (s.stats.events || 0) >= 10 },
   { id: "flee10", name: "Live to Fight", desc: "Escape 10 losing fights", valor: 5, test: s => (s.stats.flees || 0) >= 10 },
   { id: "reforge10", name: "Master Smith", desc: "Reforge gear 10 times", valor: 10, test: s => (s.stats.reforged || 0) >= 10 },
+  { id: "braced10", name: "Braced", desc: "Shield or evade 10 boss signature moves", valor: 15, test: s => (s.stats.braced || 0) >= 10 },
+  { id: "shock25", name: "Aftershock", desc: "Open 25 fights with a level-up shockwave", valor: 10, test: s => (s.stats.shocks || 0) >= 25 },
+  { id: "hybrid25", name: "Hybrid Hunter", desc: "Destroy 25 Hybrid-touched enemies", valor: 15, crate: true, test: s => (s.stats.hybrids || 0) >= 25 },
+  { id: "kits10", name: "Second Wind", desc: "Use 10 kits", valor: 10, test: s => (s.stats.kitsUsed || 0) >= 10 },
+  { id: "events25", name: "Weather Eye", desc: "See 25 world events", valor: 15, crate: true, test: s => (s.stats.events || 0) >= 25 },
   { id: "contract10", name: "Contractor", desc: "Complete 10 contracts", valor: 10, test: s => (s.stats.contracts || 0) >= 10 },
   { id: "contract50", name: "Guild Favourite", desc: "Complete 50 contracts", valor: 25, crate: true, test: s => (s.stats.contracts || 0) >= 50 },
   { id: "daily3", name: "Regular", desc: "Check in 3 days running", valor: 5, test: s => ((s.daily || {}).best || 0) >= 3 },
@@ -1316,7 +1321,7 @@ function fight(s, d, dt) {
   if (s.shock) { // a level-up's surge opens the next fight with a shockwave: a third of an ordinary enemy's health, and a stagger
     s.shock = false;
     const dmg = Math.min(f.hp - 1, f.max * (f.boss ? SHOCK_BOSS : SHOCK_FOE)) * (1 - dr(f.def, s.level));
-    if (dmg > 0) { f.hp -= dmg; f.stun = Math.max(f.stun || 0, 1.5); log(s, "a", `Your surge of power staggers ${f.name} for ${fmt(dmg)}.`); fx(s, "shock", { dmg }); }
+    if (dmg > 0) { f.hp -= dmg; f.stun = Math.max(f.stun || 0, 1.5); s.stats.shocks = (s.stats.shocks || 0) + 1; log(s, "a", `Your surge of power staggers ${f.name} for ${fmt(dmg)}.`); fx(s, "shock", { dmg }); }
   }
   // hero auto-attacks
   s.atkT += dt * d.aspd * (1 + b.aspd);
@@ -1339,11 +1344,12 @@ function fight(s, d, dt) {
       if (mv.kind === "heal") { const amt = Math.min(f.max - f.hp, f.max * mv.amt); f.hp += amt; log(s, "r1", `${f.name} regenerates ${fmt(amt)} health.`); fx(s, "foeheal", { amt }); }
       else if (mv.kind === "enrage") { f.enrage = mv.dur; log(s, "r1", `${f.name} opens a ${mv.name}: +${Math.round(mv.atk * 100)}% damage for ${mv.dur}s.`); fx(s, "foeheal", { amt: 0 }); }
       else if (s.run && (() => { const tk = s.run.party.find(m => m.hp > 0 && ((m.taunt || 0) > 0 || compStats(s, m.id).role === "tank")); if (!tk) return false; hitCompanion(s, tk, { atk: f.atk * mv.mult, L: f.L }); log(s, "h", `${COMPANIONS.find(c => c.id === tk.id).name} takes ${mv.name}.`); fx(s, "hurt", { to: s.run.party.indexOf(tk), dmg: 0, big: true }); return true; })()) { /* a tank or a taunting companion takes the hit */ }
-      else if (rnd() < b.dodge) { log(s, "a", `You evade ${f.name}'s ${mv.name}.`); fx(s, "dodge"); }
+      else if (rnd() < b.dodge) { log(s, "a", `You evade ${f.name}'s ${mv.name}.`); fx(s, "dodge"); s.stats.braced = (s.stats.braced || 0) + 1; }
       else {
         let dmg = f.atk * mv.mult * (1 - dr(d.def * (1 + b.def), f.L));
         const a1 = Math.min(s.shield, dmg); s.shield -= a1; dmg -= a1;
         const a2 = Math.min(s.pshield, dmg); s.pshield -= a2; dmg -= a2;
+        if (a1 + a2 >= dmg) s.stats.braced = (s.stats.braced || 0) + 1; // shields took at least half of it
         s.hp -= dmg; s.sinceHit = 0;
         if (mv.kind === "drain") s.en = Math.max(0, s.en - mv.energy);
         log(s, "r1", `${mv.name} hits you for ${fmt(dmg + a1 + a2)}${a1 + a2 > 0 ? ` (${fmt(a1 + a2)} absorbed)` : ""}${mv.kind === "drain" ? ` and drains ${mv.energy} energy` : ""}.`);
@@ -1451,6 +1457,7 @@ function killFoe(s, d) {
   if (evOn(s, "surge")) xp *= 1.5;
   if (f.elite) { gas += 3 + Math.floor(f.L / 5); s.stats.bounties = (s.stats.bounties || 0) + 1; if (rnd() < 0.3) gainKit(s, "Bounty cache"); }
   if (f.run && f.boss) gainKit(s, "Instance cache");
+  if (f.hybrid) s.stats.hybrids = (s.stats.hybrids || 0) + 1;
   gas = Math.round(gas * pockets);
   s.minerals += min; s.gas += gas;
   if (f.boss) { const n = f.raid ? 3 : f.run ? 2 : 1; s.mats.cores += n; log(s, "w", `+${n} ${PROF_NAMES[s.race].cores}.`); }
