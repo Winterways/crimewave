@@ -177,6 +177,11 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   front of the banner queue ahead of the level-ups and feats it triggers; Amon gets its own banner, and instance clears
   a smaller blue one with the Valor earned.
 - **Loot cards**: rare+ drops and any upgrade slide in at the bottom-left with the item line and "+x% power, equipping"; On phone widths the card stack is capped at two cards, narrower and shorter-lived, so it never covers the scene.
+- **Affixes**: rare and epic items roll one of six affixes (of Haste, of Precision, of Fortitude, of Plating, of Power,
+  of the Hunt) that adds a name suffix and a secondary stat, so two rares of the same slot are not twins and the loot
+  card has something to read. Tuned so a full rare set gains about 12% power from its affixes (first draft was 40%, far
+  too much); with the shockwave this brought the six-hour Amon times from 3.0–5.4 h to 2.6–4.3 h with zero deaths in
+  all nine classes. Legendaries keep their unique names and roll no affix.
   the gear slot flashes when something new goes in and the Power stat pulses when it rises.
 - New synthesized sounds for promotion, feats, streak milestones and bounty sightings; the level-up fanfare is longer.
 - Balance: the streak and bounty bonuses speed a full-autopilot run up by roughly 15–20% (Amon now falls in ~4–7 h
@@ -242,6 +247,9 @@ and shown as a timer pill beside the mode line: Brood Surge (enemies come four t
 90 s if its mining policy is on), Elite Patrol (one spawn in three is a bounty target) and Khaydarin Resonance (abilities
 cost half and recharge 30% faster; the autopilot's ability picker knows). Events also run during offline catch-up and
 are counted in the away summary. Feat: Storm Chaser (10 events).
+- Elite Patrol brings six or seven bounties in two minutes, so those bounties use the small banner instead of the
+  full one (a cadence audit of a five-hour run showed the burst of full banners; the audit found no other dead
+  stretch longer than 3.6 minutes between reward moments).
 
 ## Codex and bestiary
 The Codex lists every zone you have seen with its three enemies and your kill count for each; after five kills the entry

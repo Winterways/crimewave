@@ -849,6 +849,16 @@ const RARITY = [
   { name: "Legendary", prefix: null, mult: 2.35 },
 ];
 const LEGEND = { terran: ["Hyperion", "Raynor's", "Swann's"], protoss: ["Adun's", "Fenix's", "Tassadar's"], zerg: ["Swarm Queen's", "Abathur's", "Dehaka's"] };
+// Rare and epic items roll one affix: a name suffix and a secondary stat, so two rares of the same slot are not twins.
+// `amt` is a share of the item's base value v, or a flat bonus for crit and attack speed.
+const AFFIXES = [
+  { id: "haste", name: "of Haste", st: "aspd", flat: (ilvl, r) => 0.005 + ilvl * 0.0003 * r },
+  { id: "precision", name: "of Precision", st: "crit", flat: (ilvl, r) => 0.003 + ilvl * 0.00018 * r },
+  { id: "fortitude", name: "of Fortitude", st: "hp", share: 0.6 },
+  { id: "plating", name: "of Plating", st: "def", share: 0.1 },
+  { id: "power", name: "of Power", st: "atk", share: 0.1 },
+  { id: "hunt", name: "of the Hunt", st: "crit", flat: (ilvl, r) => 0.0015 + ilvl * 0.0001 * r, st2: "aspd", flat2: (ilvl, r) => 0.0025 + ilvl * 0.00015 * r },
+];
 
 const TALENTS = [
   { id: "ballistics", name: "Ballistics", desc: "+3% damage per rank" },
@@ -1083,7 +1093,14 @@ function makeItem(s, slot, ilvl, rarity) {
   if (slot === "implant") { st.atk = v * 0.45; st.crit = 0.008 + ilvl * 0.0007 * RARITY[rarity].mult; }
   const base = slot === "weapon" ? CLASSES[s.cls].weapon : SLOT_NAMES[s.race][slot];
   const prefix = rarity === 4 ? pick(LEGEND[s.race]) : pick(RARITY[rarity].prefix);
-  return { id: uid++ + "-" + Math.floor(rnd() * 1e6), slot, ilvl, rarity, name: `${prefix} ${base}`, st };
+  let suffix = "", affix = null;
+  if (rarity === 2 || rarity === 3) {
+    const a = pick(AFFIXES), r = RARITY[rarity].mult;
+    st[a.st] = (st[a.st] || 0) + (a.share ? v * a.share : a.flat(ilvl, r));
+    if (a.st2) st[a.st2] = (st[a.st2] || 0) + a.flat2(ilvl, r);
+    suffix = " " + a.name; affix = a.id;
+  }
+  return { id: uid++ + "-" + Math.floor(rnd() * 1e6), slot, ilvl, rarity, name: `${prefix} ${base}${suffix}`, affix, st };
 }
 function rollRarity(boost) {
   const r = rnd() * 100 / (1 + boost);
@@ -1171,7 +1188,7 @@ function spawnFoe(s, boss) {
     foe.elite = true; foe.title = "Bounty target"; foe.name = `${pick(BOUNTY_TITLES)} ${e.name}`;
     foe.hp *= 2.2; foe.max = foe.hp; foe.atk *= 1.25;
     log(s, "w", `Bounty target sighted: ${foe.name}!`);
-    fx(s, "banner", { lines: ["BOUNTY", foe.name], col: "#ffd84a", snd: "bounty" });
+    fx(s, "banner", { lines: ["BOUNTY", foe.name], col: "#ffd84a", snd: "bounty", small: evOn(s, "patrol") }); // a patrol brings several in a row, so those take the small banner
   }
   return foe;
 }
