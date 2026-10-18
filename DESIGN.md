@@ -127,6 +127,13 @@ Three skills per hero, levelled by use (max 50), with race-flavoured names:
   the autopilot's crafting off. Combat Stim (shards): +15% damage and health for 10 min; the autopilot pops one
   before zone bosses and raids. Skills and materials carry over through ascension.
 
+Kits (`Medkit`, `Khaydarin Salve`, `Regenerative Biomass` by race) are the one consumable from Azeroth Idle's policy
+list: a mid-fight heal of 40% max health usable against bosses and inside instances, once every 45 s, capped at five.
+They are crafted from scrap and shards (the autopilot makes one from spare materials when carrying fewer than two),
+always left by instance bosses and sometimes by bounty elites. The autopilot uses one under 30% health when fleeing is
+not an option (boss, instance, flee on cooldown or disabled); in an ordinary fight it still prefers to flee. A Kit
+button and the K key cover manual play; the Crafting tab has the card.
+
 ## Reference material from Austin
 - `benilla-re` and `wowdecomp` (SatyPardus) are reverse-engineering projects for the WoW 1.12 and 3.3.5a clients.
 - The Azeroth Idle Windows client he uploaded is a Rust app built on benilla with Bevy UI. Its strings list the
