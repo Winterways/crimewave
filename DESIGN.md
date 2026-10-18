@@ -47,6 +47,11 @@ level 20 without; higher dungeons were already cleared at both settings. The aut
 practical effect is that it takes parties in two to three levels earlier. Each use floats the ability name over the
 companion in the scene; the Dungeons tab and Codex list the signatures.
 
+The Dungeons tab forecasts each open instance within eight levels of the hero: "Rehearsal: cleared 2 of 3 with Fenix and
+Tassadar", from the same three rehearsals the autopilot uses before entering, so a manual player sees the same odds the
+autopilot acts on. Forecasts are computed one at a time off the render path (`forecastPump`) and cached per dungeon,
+party, level and power, so the tab never stalls; a party of two damage dealers gets a warning that it rarely survives.
+
 ## Ability choice
 Each class has 6 abilities: 3 from the start, then one each at levels 10, 20 and 30. Three can be slotted
 (keys 1-3 fire the slots). Slotting one yourself switches off the autopilot's ability picking.
