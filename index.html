@@ -728,6 +728,21 @@ const storyOf = (s, z) => (STORY[z.id] && STORY[z.id][s.race]) || null;
 const giverOf = (s, z) => (storyOf(s, z) || z).giver;
 const questText = (s, z, i) => { const st = storyOf(s, z); return st && st.quests[i] ? { ...z.quests[i], ...st.quests[i] } : z.quests[i]; };
 const bossLine = (s, z) => { const st = storyOf(s, z); return (st && st.boss) || z.boss.line; };
+// Boss moves: every zone boss has one signature attack on a timer, telegraphed two seconds ahead so a player (or the
+// autopilot) can answer it with a shield or a dodge. slam: one big hit; drain: a hit that also drains energy;
+// heal: the boss recovers a share of its health; enrage: +damage for a few seconds.
+const TELEGRAPH = 2;
+const BOSS_MOVES = {
+  "Brood Mother Ixtha": { name: "Broodling Swarm", every: 14, kind: "slam", mult: 2.2 },
+  "General Edmund Duke": { name: "Yamato Cannon", every: 16, kind: "slam", mult: 3.5 },
+  "Cerebrate Zasz": { name: "Regeneration", every: 15, kind: "heal", amt: 0.08 },
+  "The Overmind": { name: "Psionic Scream", every: 15, kind: "slam", mult: 3 },
+  "Ulrezaj": { name: "Maelstrom", every: 14, kind: "drain", mult: 2, energy: 30 },
+  "Arcturus Mengsk": { name: "Nuclear Strike", every: 20, kind: "slam", mult: 5 },
+  "Maar": { name: "Shadow Rift", every: 14, kind: "enrage", atk: 0.35, dur: 8 },
+  "Amon": { name: "Void Collapse", every: 16, kind: "slam", mult: 4 },
+};
+const bossMove = f => f && f.boss && !f.run ? BOSS_MOVES[f.name] : null;
 
 // Abilities 4-6 per class unlock at levels 10 / 20 / 30. Three can be slotted at once.
 const EXTRA_ABILITIES = {
@@ -1305,6 +1320,28 @@ function fight(s, d, dt) {
   if (auto(s, "abilities") && f.hp > 0) aiAbilities(s, d);
   if (s.foe !== f) return; // an ability finished it off
   if (f.hp <= 0) return killFoe(s, d);
+  // boss signature move
+  const mv = bossMove(f);
+  if (mv) {
+    f.moveT = (f.moveT == null ? mv.every * 0.6 : f.moveT) - dt;
+    if (f.moveT <= TELEGRAPH && !f.tele) { f.tele = true; log(s, "w", `${f.name} is charging ${mv.name}!`); fx(s, "tele", { name: mv.name }); }
+    if (f.moveT <= 0) {
+      f.moveT = mv.every; f.tele = false;
+      if (mv.kind === "heal") { const amt = Math.min(f.max - f.hp, f.max * mv.amt); f.hp += amt; log(s, "r1", `${f.name} regenerates ${fmt(amt)} health.`); fx(s, "foeheal", { amt }); }
+      else if (mv.kind === "enrage") { f.enrage = mv.dur; log(s, "r1", `${f.name} opens a ${mv.name}: +${Math.round(mv.atk * 100)}% damage for ${mv.dur}s.`); fx(s, "foeheal", { amt: 0 }); }
+      else if (rnd() < b.dodge) { log(s, "a", `You evade ${f.name}'s ${mv.name}.`); fx(s, "dodge"); }
+      else {
+        let dmg = f.atk * mv.mult * (1 - dr(d.def * (1 + b.def), f.L));
+        const a1 = Math.min(s.shield, dmg); s.shield -= a1; dmg -= a1;
+        const a2 = Math.min(s.pshield, dmg); s.pshield -= a2; dmg -= a2;
+        s.hp -= dmg; s.sinceHit = 0;
+        if (mv.kind === "drain") s.en = Math.max(0, s.en - mv.energy);
+        log(s, "r1", `${mv.name} hits you for ${fmt(dmg + a1 + a2)}${a1 + a2 > 0 ? ` (${fmt(a1 + a2)} absorbed)` : ""}${mv.kind === "drain" ? ` and drains ${mv.energy} energy` : ""}.`);
+        fx(s, "hurt", { to: "hero", dmg: dmg + a1 + a2, big: true });
+      }
+    }
+    if (f.enrage > 0) f.enrage -= dt;
+  }
   // foe attacks
   if (f.stun > 0) f.stun -= dt;
   else {
@@ -1314,7 +1351,7 @@ function fight(s, d, dt) {
       const tgt = pickTarget(s);
       if (tgt) { hitCompanion(s, tgt, f); fx(s, "hurt", { to: s.run.party.indexOf(tgt), dmg: 0 }); continue; }
       if (rnd() < b.dodge) { fx(s, "dodge"); continue; }
-      let dmg = f.atk * (0.9 + rnd() * 0.2) * (1 - dr(d.def * (1 + b.def), f.L));
+      let dmg = f.atk * (0.9 + rnd() * 0.2) * (f.enrage > 0 ? 1 + (bossMove(f) || {}).atk || 1 : 1) * (1 - dr(d.def * (1 + b.def), f.L));
       s.sinceHit = 0;
       const a1 = Math.min(s.shield, dmg); s.shield -= a1; dmg -= a1;
       const a2 = Math.min(s.pshield, dmg); s.pshield -= a2; dmg -= a2;
@@ -1371,9 +1408,10 @@ function aiAbilities(s, d) {
     const a = abs[i];
     if (s.cds[a.id] || s.en < abCost(s, a)) continue;
     let want = false;
+    const incoming = !!f.tele && bossMove(f) && bossMove(f).kind !== "heal" && bossMove(f).kind !== "enrage"; // a telegraphed boss hit is two seconds away
     if (a.type === "heal") want = hpf < 0.5;
-    else if (a.type === "shield") want = hpf < 0.7;
-    else if (a.buff && (a.buff.dodge || a.buff.def)) want = hpf < 0.55 || (f.boss && hpf < 0.85);
+    else if (a.type === "shield") want = hpf < 0.7 || incoming;
+    else if (a.buff && (a.buff.dodge || a.buff.def)) want = hpf < 0.55 || (f.boss && hpf < 0.85) || incoming;
     else if (a.type === "buff") want = longFight && (!a.hpCost || hpf > 0.55);
     else if (a.type === "dot") want = f.hp > hitDmg * a.mult * 0.8 && s.en - abCost(s, a) >= reserve;
     else if (a.type === "dmg") want = s.en - abCost(s, a) >= reserve && (a.mult < 5 || f.hp > hitDmg * a.mult * 0.7);
@@ -1677,7 +1715,8 @@ function bossOdds(s, d) {
   const z = zoneOf(s), f = foeStats(z.max, z.boss, true, s);
   const dps = d.atk * d.aspd * (1 + d.crit) * (1 - dr(f.def, s.level)) * 1.35; // abilities ~ +35%
   const heal = s.race === "zerg" ? d.hp * 0.015 : 0;
-  const incoming = Math.max(1, f.atk * f.aspd * (1 - dr(d.def, z.max)) - heal);
+  const mv = BOSS_MOVES[z.boss.name], moveDps = mv ? (mv.mult ? mv.mult / mv.every : mv.kind === "enrage" ? mv.atk * mv.dur / mv.every * f.aspd : 0.25) : 0; // the signature move, averaged over its timer
+  const incoming = Math.max(1, f.atk * (f.aspd + moveDps) * (1 - dr(d.def, z.max)) - heal);
   const ehp = d.hp * (s.race === "protoss" ? 1.25 : 1) * 1.15;
   return (ehp / incoming) / (f.hp / dps);
 }
@@ -2400,7 +2439,7 @@ function renderPane() {
       h += `<div class="card ${state}"><div class="row"><h3>${qt.t}</h3><span class="num">${prog}/${qd.n}</span></div><p>${qt.d}</p><p>Defeat ${qd.n} × ${target}.</p></div>`;
     });
     const ready = q.i >= z.quests.length;
-    h += `<div class="card ${S.bosses[S.zone] ? "done" : ready ? "cur" : "locked"}"><div class="row"><h3>Boss · ${z.boss.name}</h3><span class="label">${S.bosses[S.zone] ? "Defeated" : ready ? "Ready" : "Locked"}</span></div><p>${bossLine(S, z)}</p>${ready && !S.bosses[S.zone] ? `<p>Your estimated margin: <span class="num">${bossOdds(S, derive(S)).toFixed(2)}x</span>. Autopilot engages at ${S.pol.bossMargin}x.</p>` : ""}</div>`;
+    h += `<div class="card ${S.bosses[S.zone] ? "done" : ready ? "cur" : "locked"}"><div class="row"><h3>Boss · ${z.boss.name}</h3><span class="label">${S.bosses[S.zone] ? "Defeated" : ready ? "Ready" : "Locked"}</span></div><p>${bossLine(S, z)}${BOSS_MOVES[z.boss.name] ? ` Signature: <b>${BOSS_MOVES[z.boss.name].name}</b>, telegraphed ${TELEGRAPH}s ahead.` : ""}</p>${ready && !S.bosses[S.zone] ? `<p>Your estimated margin: <span class="num">${bossOdds(S, derive(S)).toFixed(2)}x</span>. Autopilot engages at ${S.pol.bossMargin}x.</p>` : ""}</div>`;
   }
   if (UI.tab === "map") {
     ZONES.forEach((zz, i) => {
@@ -2603,7 +2642,7 @@ function renderLive() {
   fe.classList.toggle("boss", !!(f && (f.boss || f.elite)));
   if (f) {
     $("aFoeName").textContent = f.name;
-    $("aFoeMeta").textContent = `Lv ${f.L}${f.boss || f.elite || f.hybrid ? " · " + f.title : ""} · ${fmt(Math.max(0, f.hp))} / ${fmt(f.max)}${f.stun > 0 ? " · Stunned" : ""}${f.dots.length ? " · Burning" : ""}`;
+    $("aFoeMeta").textContent = `Lv ${f.L}${f.boss || f.elite || f.hybrid ? " · " + f.title : ""} · ${fmt(Math.max(0, f.hp))} / ${fmt(f.max)}${f.stun > 0 ? " · Stunned" : ""}${f.dots.length ? " · Burning" : ""}${f.tele && bossMove(f) ? ` · ${bossMove(f).name} in ${Math.max(0, f.moveT).toFixed(1)}s` : f.enrage > 0 ? " · Enraged" : ""}`;
     $("aFoeHp").style.width = clamp(f.hp / f.max * 100, 0, 100) + "%";
   } else {
     $("aFoeName").textContent = "No contact";
@@ -3129,8 +3168,10 @@ function processFx(L) {
       R.foe.flash = 1;
       addText(foeX + (Math.random() - .5) * 30, foeY - 30 * L.k, fmt(e.dmg), e.crit ? "#ffd84a" : "#ffffff", e.crit);
       sfx(e.ability ? "ability" : heroWeaponSfx());
-    } else if (e.type === "hurt") {
-      R.foe.lunge = 1;
+    } else if (e.type === "tele") { addText(foeX, foeY - 84 * L.k, e.name + "!", "#ff7b6b", true); R.auras.push({ who: "foe", col: "#ff7b6b", life: 1, ring: true }); sfx("alarm"); }
+    else if (e.type === "foeheal") { burst(foeX, foeY, "#7cf08a", 16, 1.5, 3); if (e.amt) addText(foeX, foeY - 60 * L.k, "+" + fmt(e.amt), "#7cf08a", false); sfx("heal"); }
+    else if (e.type === "hurt") {
+      R.foe.lunge = 1; if (e.big) { R.shake = Math.max(R.shake, 1); R.flash = Math.max(R.flash || 0, .5); }
       const tgt = e.to === "hero" ? { x: heroX, y: heroY } : { x: L.comps[e.to] ? L.comps[e.to].x : heroX, y: heroY + 6 * L.k };
       if (S.foe && RANGED.has(foeLook(S.foe.name).kind)) R.shots.push({ x1: foeX - 20 * L.k, y1: foeY, x2: tgt.x, y2: tgt.y, life: 1, col: foeLook(S.foe.name).pal.glow });
       if (e.to === "hero") { R.hero.flash = 1; addText(heroX + (Math.random() - .5) * 20, heroY - 34 * L.k, fmt(e.dmg), "#ff7b6b", false); sfx("hurt"); }
@@ -3249,7 +3290,7 @@ function renderScene(now) {
   }
   R.shots = R.shots.filter(s => s.life > -.2);
   // auras
-  for (const a of R.auras) { a.life -= dt * 1.2; c.beginPath(); const r = (1 - a.life) * 60 * L.k + 20 * L.k, at = a.who && a.who.startsWith("comp") && L.comps[+a.who.slice(4)] || L.hero; c.ellipse(at.x, at.y - 40 * L.k, r, r * 1.2, 0, 0, Math.PI * 2); c.strokeStyle = a.col; c.globalAlpha = Math.max(0, a.life); c.lineWidth = 3; c.stroke(); c.globalAlpha = 1; }
+  for (const a of R.auras) { a.life -= dt * 1.2; c.beginPath(); const r = (1 - a.life) * 60 * L.k + 20 * L.k, at = a.who === "foe" ? { x: L.foe.x + R.foe.x, y: L.foe.y - 45 * L.k } : a.who && a.who.startsWith("comp") && L.comps[+a.who.slice(4)] || L.hero; c.ellipse(at.x, at.y - 40 * L.k, r, r * 1.2, 0, 0, Math.PI * 2); c.strokeStyle = a.col; c.globalAlpha = Math.max(0, a.life); c.lineWidth = 3; c.stroke(); c.globalAlpha = 1; }
   R.auras = R.auras.filter(a => a.life > 0);
   // particles
   for (const p of R.parts) { p.x += p.vx; p.y += p.vy; p.vy += .08; p.life -= dt * p.decay; c.globalAlpha = Math.max(0, p.life); c.fillStyle = p.col; c.fillRect(p.x, p.y, p.size, p.size); }
@@ -3350,6 +3391,7 @@ const SFX = {
   splat: () => hiss({ filter: "lowpass", freq: 1400, f2: 200, dur: .2, vol: .3 }),
   boom: () => { hiss({ filter: "lowpass", freq: 600, f2: 60, dur: .9, vol: .6 }); tone({ f: 80, f2: 28, dur: .8, vol: .3 }); },
   heal: () => [660, 880, 1100].forEach((f, i) => tone({ f, dur: .18, vol: .08, delay: i * .07 })),
+  alarm: () => { [440, 440, 440].forEach((f, i) => tone({ type: "square", f, dur: .12, vol: .06, delay: i * .16 })); tone({ type: "sawtooth", f: 180, f2: 120, dur: .5, vol: .05 }); },
   shield: () => { tone({ type: "triangle", f: 300, f2: 700, dur: .3, vol: .1 }); tone({ f: 600, f2: 1200, dur: .3, vol: .05 }); },
   buff: () => tone({ type: "square", f: 440, f2: 880, dur: .16, vol: .05 }),
   level: () => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone({ type: "triangle", f, dur: .3, vol: .13, delay: i * .08 })); hiss({ filter: "highpass", freq: 2000, dur: .5, vol: .12, delay: .3 }); tone({ f: 1568, dur: .6, vol: .08, delay: .45 }); },

@@ -263,6 +263,17 @@ during offline catch-up and are counted in the away summary. Feat: Storm Chaser 
   full one (a cadence audit of a five-hour run showed the burst of full banners; the audit found no other dead
   stretch longer than 3.6 minutes between reward moments).
 
+## Boss moves
+Every zone boss has one signature move on a timer, telegraphed two seconds ahead in the log, over the boss in the scene
+(name, red ring, alarm) and in the enemy line ("Nuclear Strike in 1.5s"): Ixtha's Broodling Swarm (2.2x hit), Duke's
+Yamato Cannon (3.5x), Zasz's Regeneration (heals 8%), the Overmind's Psionic Scream (3x), Ulrezaj's Maelstrom (2x and
+drains 30 energy), Mengsk's Nuclear Strike (5x), Maar's Shadow Rift (+35% damage for 8 s) and Amon's Void Collapse (4x).
+Shields absorb them and dodges evade them, so a manual player who answers the telegraph with Combat Shield or Personal
+Cloak takes nothing ("Void Collapse hits you for 1438 (1438 absorbed)"), and the autopilot's ability picker does the same
+when a shield or dodge is ready. The boss-margin estimate folds the move in (its damage averaged over its timer), which
+is why the autopilot waits a little longer before a boss now; six-hour sims after the change still reach Amon in
+2.8–4.6 h with 0–1 deaths and 3–6 answered telegraphs per run. The Quests tab's boss card names the signature.
+
 ## Codex and bestiary
 The Codex lists every zone you have seen with its three enemies and your kill count for each; after five kills the entry
 reveals a line of field intel (24 entries, plus the boss once beaten). Companions you have met are listed with their bond
