@@ -970,6 +970,35 @@ const TALENTS = [
   { id: "cells", name: "Power Cells", desc: "+6% resource regeneration per rank" },
 ];
 const TALENT_MAX = 10;
+// Doctrines: at levels 15 and 30 the hero picks one of two race-flavoured packages, a bigger decision than a talent
+// point. They reset with talents at ascension. The autopilot's talent rule picks the one that adds more power, counting
+// experience and pay bonuses at a discount.
+const DOCTRINE_AT = [15, 30];
+const DOCTRINES = {
+  terran: [
+    [ { id: "stim", name: "Stim Doctrine", desc: "+10% attack speed and abilities recharge 15% faster", st: { aspd: 0.10, cdr: 0.15 } },
+      { id: "shields", name: "Combat Shields", desc: "+12% max health and +10% armor", st: { hp: 0.12, def: 0.10 } } ],
+    [ { id: "siege", name: "Siege Doctrine", desc: "+15% damage", st: { atk: 0.15 } },
+      { id: "recon", name: "Recon Doctrine", desc: "+5 points of critical chance, +10% experience and pay", st: { crit: 0.05, xp: 0.10, pay: 0.10 } } ],
+  ],
+  protoss: [
+    [ { id: "fury", name: "Khala's Fury", desc: "+8% damage and +4 points of critical chance", st: { atk: 0.08, crit: 0.04 } },
+      { id: "capacitors", name: "Shield Capacitors", desc: "+15% max health and energy regenerates 20% faster", st: { hp: 0.15, regen: 0.20 } } ],
+    [ { id: "storm", name: "Psionic Mastery", desc: "+12% damage and abilities recharge 15% faster", st: { atk: 0.12, cdr: 0.15 } },
+      { id: "conclave", name: "Conclave's Favour", desc: "+10% armor, +10% experience and pay", st: { def: 0.10, xp: 0.10, pay: 0.10 } } ],
+  ],
+  zerg: [
+    [ { id: "adrenal", name: "Adrenal Glands", desc: "+12% attack speed", st: { aspd: 0.12 } },
+      { id: "chitin", name: "Chitinous Plating", desc: "+10% max health and +12% armor", st: { hp: 0.10, def: 0.12 } } ],
+    [ { id: "hunger", name: "Primal Hunger", desc: "+12% damage and +5 points of critical chance", st: { atk: 0.12, crit: 0.05 } },
+      { id: "broodmother", name: "Brood Mother's Gift", desc: "+10% max health, +10% experience and pay", st: { hp: 0.10, xp: 0.10, pay: 0.10 } } ],
+  ],
+};
+const doctrineChoices = (s, tier) => (DOCTRINES[s.race] || [])[tier] || [];
+const doctrineOf = (s, tier) => doctrineChoices(s, tier).find(d => d.id === (s.doct || {})[tier]) || null;
+// Sum of one stat across the chosen doctrines; o.doct lets power() try a choice before taking it.
+function doct(s, k, o) { let v = 0; const chosen = o || s.doct || {}; DOCTRINE_AT.forEach((L, tier) => { const d = doctrineChoices(s, tier).find(x => x.id === chosen[tier]); if (d && d.st[k]) v += d.st[k]; }); return v; }
+const doctrineOpen = (s, tier) => s.level >= DOCTRINE_AT[tier] && !(s.doct || {})[tier];
 const UPGRADES = [
   { id: "weapons", name: "Weapons", desc: "+7% damage per level" },
   { id: "armor", name: "Armor", desc: "+6% health and +7% armor per level" },
@@ -1247,7 +1276,7 @@ function newGame(name, race, cls, carry) {
     gear: { weapon: null, armor: null, helm: null, boots: null, implant: null }, bag: [],
     zone: 0, unlocked: 0, holdUntil: 0, plan: {}, quests: {}, bosses: {}, seen: { 0: true },
     upg: carry?.upg || { weapons: 0, armor: 0, logistics: 0, salvage: 0 },
-    tal: Object.fromEntries(TALENTS.map(t => [t.id, 0])), talPts: 0,
+    tal: Object.fromEntries(TALENTS.map(t => [t.id, 0])), talPts: 0, doct: {},
     pol: { ...DEFAULT_POL, ...(carry?.pol || {}) },
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
     streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, title: carry?.title || "", titleAuto: carry?.titleAuto !== false, nextBounty: 480 + rnd() * 300, nextRare: 600 + rnd() * 600, trophies: carry?.trophies || {}, mastered: carry?.mastered || {},
@@ -1312,15 +1341,15 @@ function gearSum(gear) {
   return g;
 }
 function derive(s, o = {}) {
-  const c = CLASSES[s.cls], L = o.level || s.level, g = gearSum(o.gear || s.gear), t = o.tal || s.tal, u = o.upg || s.upg;
+  const c = CLASSES[s.cls], L = o.level || s.level, g = gearSum(o.gear || s.gear), t = o.tal || s.tal, u = o.upg || s.upg, dc = o.doct;
   const ess = (1 + 0.04 * s.essence) * (s.stim > 0 ? 1.15 : 1);
   return {
-    atk: (c.base.atk * (1 + 0.13 * (L - 1)) + g.atk * 1.15 / c.base.aspd) * (1 + 0.03 * t.ballistics + 0.07 * u.weapons) * ess,
-    hp: (c.base.hp * (1 + 0.15 * (L - 1)) + g.hp) * (1 + 0.04 * t.plating + 0.06 * u.armor) * ess * (1 + traits(s, "hp")),
-    def: (c.base.def * (1 + 0.1 * (L - 1)) + g.def) * (1 + 0.07 * u.armor) * (1 + traits(s, "def")),
-    crit: Math.min(0.75, c.base.crit + g.crit + 0.01 * t.optics),
-    aspd: c.base.aspd * (1 + g.aspd + 0.02 * t.overdrive),
-    regen: 4 * (1 + 0.06 * t.cells),
+    atk: (c.base.atk * (1 + 0.13 * (L - 1)) + g.atk * 1.15 / c.base.aspd) * (1 + 0.03 * t.ballistics + 0.07 * u.weapons) * ess * (1 + doct(s, "atk", dc)),
+    hp: (c.base.hp * (1 + 0.15 * (L - 1)) + g.hp) * (1 + 0.04 * t.plating + 0.06 * u.armor) * ess * (1 + traits(s, "hp")) * (1 + doct(s, "hp", dc)),
+    def: (c.base.def * (1 + 0.1 * (L - 1)) + g.def) * (1 + 0.07 * u.armor) * (1 + traits(s, "def")) * (1 + doct(s, "def", dc)),
+    crit: Math.min(0.75, c.base.crit + g.crit + 0.01 * t.optics + doct(s, "crit", dc)),
+    aspd: c.base.aspd * (1 + g.aspd + 0.02 * t.overdrive + doct(s, "aspd", dc)),
+    regen: 4 * (1 + 0.06 * t.cells) * (1 + doct(s, "regen", dc)),
   };
 }
 const dr = (def, L) => def / (def + 20 + 6 * L);
@@ -1553,7 +1582,7 @@ function useAbility(s, i, byAI) {
   const cost = abCost(s, a);
   if (s.cds[a.id] || s.en < cost) return false;
   if (a.hpCost && s.hp <= d.hp * a.hpCost + 1) return false;
-  s.en -= cost; s.cds[a.id] = a.cd * (evOn(s, "resonance") ? 0.7 : 1);
+  s.en -= cost; s.cds[a.id] = a.cd * (evOn(s, "resonance") ? 0.7 : 1) * (1 - doct(s, "cdr"));
   if (a.hpCost) s.hp -= d.hp * a.hpCost;
   const who = byAI ? "Autopilot" : "You";
   fx(s, "ability", { a });
@@ -1615,8 +1644,8 @@ function killFoe(s, d) {
   const cap = streakCap(s), streakMul = 1 + Math.min(s.streak, cap) * 0.01 * hz(s, "streak");
   if (s.streak === 10 || s.streak === 20 || s.streak === cap) fx(s, "banner", { lines: [`${s.streak} KILL STREAK`, `+${Math.min(s.streak, cap)}% xp and minerals`], col: "#e8b43c", snd: "streak", small: true });
   contractEvent(s, "streak", s.streak);
-  const eliteMul = f.rare ? 5 : f.elite ? 3 : 1, pockets = masteryMul(s) * (1 + 0.2 * perk(s, "pockets")) * (1 + CYCLE_PAY * (s.ascensions || 0)) * hz(s, "pay") * (1 + traits(s, "pay"));
-  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * masteryMul(s) * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul * hz(s, "xp") * (1 + traits(s, "xp"));
+  const eliteMul = f.rare ? 5 : f.elite ? 3 : 1, pockets = masteryMul(s) * (1 + doct(s, "pay")) * (1 + 0.2 * perk(s, "pockets")) * (1 + CYCLE_PAY * (s.ascensions || 0)) * hz(s, "pay") * (1 + traits(s, "pay"));
+  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * masteryMul(s) * (1 + doct(s, "xp")) * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul * hz(s, "xp") * (1 + traits(s, "xp"));
   let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4) * streakMul * eliteMul * pockets;
   let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 || evOn(s, "leak") ? 1 + Math.floor(f.L * 0.15) : 0;
   if (evOn(s, "convoy")) min *= 2;
@@ -1702,6 +1731,7 @@ function gainXp(s, xp) {
     log(s, "w", `Level up! You are now level ${s.level}. ${gains.join(", ")}. Power surges for 20s and the next enemy meets a shockwave.`);
     fx(s, "level");
     fx(s, "banner", { lines: [`LEVEL ${s.level}`, gains.join(" · ")], col: "#ffd84a", snd: null });
+    { const tier = DOCTRINE_AT.indexOf(s.level); if (tier >= 0) log(s, "w", `A doctrine is open at level ${s.level}: choose one of two in the Build tab${s.pol.autopilot && s.pol.talents ? ", or let the autopilot take the stronger" : ""}.`); }
     if (rankIdx(s.level) > oldRank) {
       const r = rankName(s);
       log(s, "w", `Promoted to ${r}! A supply crate arrives.`);
@@ -1982,6 +2012,7 @@ function autopilot(s, d) {
     const stale = s.contracts.findIndex(c => s.stats.played - Math.max(c.t0, c.lastProg) > 1200);
     if (stale >= 0) skipContract(s, stale, true);
   }
+  if (P.talents) pickDoctrines(s);
   if (P.talents && s.talPts > 0) {
     let best = null, bg = -1;
     for (const t of TALENTS) {
@@ -2176,6 +2207,30 @@ function eventTick(s, dt) {
 }
 
 /* ---------- feats ---------- */
+/* ---------- doctrines ---------- */
+function chooseDoctrine(s, tier, id, byAI) {
+  const d = doctrineChoices(s, tier).find(x => x.id === id);
+  if (!d || !doctrineOpen(s, tier)) return false;
+  s.doct = s.doct || {}; s.doct[tier] = id;
+  const hp = derive(s).hp; s.hp = Math.min(hp, s.hp + hp * (d.st.hp || 0)); // a health doctrine fills the new room
+  chron(s, `Adopted ${d.name}.`);
+  log(s, "w", `Doctrine: ${d.name}. ${d.desc}.`);
+  fx(s, "banner", { lines: [`DOCTRINE: ${d.name.toUpperCase()}`, d.desc], col: "#c06cff", snd: "promote", small: true, delay: 1 });
+  if (byAI) decide(s, "Doctrine", `Adopted ${d.name} (${d.desc}), the stronger of the two level-${DOCTRINE_AT[tier]} doctrines.`);
+  bump(); return true;
+}
+// Autopilot: score each choice by the power it adds, with experience and pay bonuses counted at half weight.
+function pickDoctrines(s) {
+  DOCTRINE_AT.forEach((L, tier) => {
+    if (!doctrineOpen(s, tier)) return;
+    let best = null, bs = -1;
+    for (const d of doctrineChoices(s, tier)) {
+      const sc = power(s, { doct: { ...(s.doct || {}), [tier]: d.id } }) / power(s) * (1 + 0.5 * (d.st.xp || 0) + 0.3 * (d.st.pay || 0)) * (1 + 0.5 * (d.st.cdr || 0)) * (1 + 0.5 * (d.st.regen || 0));
+      if (sc > bs) { bs = sc; best = d; }
+    }
+    if (best) chooseDoctrine(s, tier, best.id, true);
+  });
+}
 function checkFeats(s) {
   checkMastery(s);
   for (const f of FEATS) {
@@ -2497,7 +2552,7 @@ function hydrate(o) {
   o.loadout = Array.isArray(o.loadout) ? [...new Set(o.loadout.filter(i => Number.isInteger(i) && i >= 0 && i < nAb))].slice(0, 3) : [];
   if (!o.loadout.length) o.loadout = [0, 1, 2];
   o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0; o.kits = Math.round(num(o.kits, 0, 0, KIT_MAX)); o.kitCd = num(o.kitCd, 0, 0);
-  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.title = typeof o.title === "string" ? o.title : ""; o.titleAuto = o.titleAuto !== false; o.trophies = o.trophies && typeof o.trophies === "object" ? o.trophies : {}; o.mastered = o.mastered && typeof o.mastered === "object" ? o.mastered : {}; o.nextRare = num(o.nextRare, (o.stats.played || 0) + 600, 0); o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
+  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.title = typeof o.title === "string" ? o.title : ""; o.titleAuto = o.titleAuto !== false; o.trophies = o.trophies && typeof o.trophies === "object" ? o.trophies : {}; o.mastered = o.mastered && typeof o.mastered === "object" ? o.mastered : {}; o.doct = o.doct && typeof o.doct === "object" ? o.doct : {}; o.nextRare = num(o.nextRare, (o.stats.played || 0) + 600, 0); o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
   o.contracts = Array.isArray(o.contracts) ? o.contracts.filter(c => c && CONTRACT_KINDS[c.kind] && typeof c.n === "number" && c.reward && (c.zone === undefined || ZONES[c.zone])).slice(0, 3) : [];
   o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0);
   o.event = o.event && EVENTS.some(e => e.id === o.event.id) && typeof o.event.t === "number" ? o.event : null; o.nextEvent = num(o.nextEvent, (o.stats.played || 0) + 600, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
@@ -2633,7 +2688,7 @@ function renderStatic() {
 }
 function renderTabs() {
   const qz = questState(S, S.zone);
-  const dots = { quests: !S.run && !S.bosses[S.zone] && qz.i >= zoneOf(S).quests.length && !(S.pol.autopilot && S.pol.boss), dungeons: !S.run && !(S.pol.autopilot && S.pol.dungeons) && DUNGEONS.some((dg, i) => !dungeonReady(S, i) && dLevel(dg) <= S.level), crafting: canCraft(S) && !(S.pol.autopilot && S.pol.craft), talents: S.talPts > 0 || S.perkPts > 0 || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
+  const dots = { quests: !S.run && !S.bosses[S.zone] && qz.i >= zoneOf(S).quests.length && !(S.pol.autopilot && S.pol.boss), dungeons: !S.run && !(S.pol.autopilot && S.pol.dungeons) && DUNGEONS.some((dg, i) => !dungeonReady(S, i) && dLevel(dg) <= S.level), crafting: canCraft(S) && !(S.pol.autopilot && S.pol.craft), talents: S.talPts > 0 || S.perkPts > 0 || (!(S.pol.autopilot && S.pol.talents) && DOCTRINE_AT.some((L, tier) => doctrineOpen(S, tier))) || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
   $("tabs").innerHTML = TABS.map(([k, n]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${UI.tab === k}">${n}${dots[k] ? '<span class="dot"></span>' : ""}</button>`).join("");
 }
 function renderPane() {
@@ -2753,6 +2808,13 @@ function renderPane() {
       const locked = abLvl(a) > S.level, on = S.loadout.includes(i);
       h += `<div class="item ${locked ? "card locked" : ""}"><span><b>${icon(a.type, { dmg: "#ffd84a", dot: "#ff8a2a", buff: "#8fb3d9", shield: "#9ad9ff", heal: "#7cf08a" }[a.type], 14)} ${a.name}</b> ${isDefensive(a) ? '<span class="role">Defensive</span>' : ""}<span class="sub">${a.desc}</span><span class="sub">${a.cost ? a.cost + " " + RACES[S.race].res : a.hpCost ? Math.round(a.hpCost * 100) + "% health" : "free"} · ${a.cd}s cooldown${locked ? ` · unlocks at level ${abLvl(a)}` : ""}</span></span>
         <span class="btns"><button class="chip" data-slot="${i}" aria-pressed="${on}" ${locked || (!on && S.loadout.length >= 3) ? "disabled" : ""}>${on ? "Slotted" : "Slot"}</button></span></div>`;
+    });
+    h += `<h3 class="label" style="margin-top:6px">Doctrines</h3>`;
+    DOCTRINE_AT.forEach((L, tier) => {
+      const cur = doctrineOf(S, tier), open = S.level >= L;
+      h += `<div class="card ${cur ? "done" : open ? "cur" : "locked"}"><div class="row"><h3>Level ${L} doctrine</h3><span class="label">${cur ? "Chosen" : open ? "Open" : `Level ${L}`}</span></div>
+        ${cur ? `<p><b>${cur.name}.</b> ${cur.desc}. Doctrines reset with talents at ascension.</p>` : `<p>${open ? "Pick one of two. The choice holds until ascension." : `Opens at level ${L}: one of two race doctrines, a bigger step than a talent point.`}</p>`}
+        ${!cur ? `<div class="chips">${doctrineChoices(S, tier).map(d => `<div class="item"><span><b>${d.name}</b><span class="sub">${d.desc}</span></span><span class="btns"><button class="btn small ${open ? "primary" : ""}" data-doct="${tier}:${d.id}" ${open ? "" : "disabled"}>Choose</button></span></div>`).join("")}</div>` : ""}</div>`;
     });
     h += `<h3 class="label" style="margin-top:6px">Talents</h3>`;
     h += `<p class="note">${S.talPts} unspent point${S.talPts === 1 ? "" : "s"}. You earn one per level.</p>`;
@@ -3042,6 +3104,7 @@ $("pane").addEventListener("click", e => {
     const id = t.dataset.bond, cost = bondCost(S, id), rank = (S.comp[id] || {}).rank || 0;
     if (rank < 10 && S.marks >= cost) { S.marks -= cost; S.comp[id] = { rank: rank + 1 }; bump(); if (TRAITS[id] && (rank + 1 === TRAIT_AT || rank + 1 === TRAIT_MAX_AT)) toast(`${TRAITS[id].name}: ${TRAITS[id].desc(TRAITS[id].v * traitTier(S, id))}, everywhere.`); }
   }
+  if (t.dataset.doct) { const [tier, id] = t.dataset.doct.split(":"); if (chooseDoctrine(S, +tier, id, false)) toast(`${doctrineOf(S, +tier).name} adopted.`); }
   if (t.dataset.tal) { if (S.talPts > 0 && S.tal[t.dataset.tal] < TALENT_MAX) { S.tal[t.dataset.tal]++; S.talPts--; bump(); } }
   if (t.dataset.perk) { const pk = PERKS.find(x => x.id === t.dataset.perk); if (pk && S.perkPts > 0 && perk(S, pk.id) < pk.max) { S.perks[pk.id] = perk(S, pk.id) + 1; S.perkPts--; log(S, "k", `Perk: ${pk.name} rank ${S.perks[pk.id]}.`); bump(); } }
   if (t.dataset.skip !== undefined) skipContract(S, +t.dataset.skip, false);
