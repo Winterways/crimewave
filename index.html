@@ -212,6 +212,19 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .pips i { width: 9px; height: 9px; background: var(--plate-2); border: 1px solid var(--line); }
 .pips i.on { background: var(--acc); border-color: var(--acc); }
 
+/* party */
+.party { display: grid; gap: 6px; margin-top: 4px; }
+.party:empty { display: none; }
+.member { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 8px; align-items: center; font-size: 12px; color: var(--mute); }
+.member .bar { height: 6px; }
+.member.down { opacity: .45; }
+.role { font: 600 10px var(--f-display); text-transform: uppercase; letter-spacing: .1em; color: var(--acc); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--plate-2); border: 1px solid var(--line); padding: 5px 9px; font-size: 12px; }
+.chip[aria-pressed="true"] { border-color: var(--acc); color: var(--ink); background: var(--acc-dim); }
+.chip:disabled { opacity: .4; cursor: not-allowed; }
+.raidtag { color: var(--r-legendary); }
+
 /* decisions feed */
 .feed { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; font-size: 13px; }
 .feed p { margin: 0; display: grid; grid-template-columns: 74px 92px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -295,7 +308,8 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
       </div>
       <div class="arena">
         <div class="unit hero"><h3 id="aHeroName">—</h3><div class="meta" id="aHeroMeta">—</div>
-          <div class="bar tall" style="--c:var(--hp)"><i id="aHeroHp"></i><i class="sh" id="aHeroSh"></i></div></div>
+          <div class="bar tall" style="--c:var(--hp)"><i id="aHeroHp"></i><i class="sh" id="aHeroSh"></i></div>
+          <div class="party" id="aParty"></div></div>
         <div class="vs">VS</div>
         <div class="unit foe" id="aFoe"><h3 id="aFoeName">No contact</h3><div class="meta" id="aFoeMeta">Scanning the area</div>
           <div class="bar tall" style="--c:var(--hp)"><i id="aFoeHp"></i></div></div>
@@ -306,6 +320,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
         <button class="btn" id="engageBtn">Engage</button>
         <button class="btn" id="restBtn">Rest</button>
         <button class="btn" id="bossBtn">Challenge boss</button>
+        <button class="btn" id="leaveBtn" hidden>Leave instance</button>
       </div>
       <div class="log" id="log" aria-live="off"></div>
     </section>
@@ -477,6 +492,90 @@ const ZONES = [
 ];
 const MAX_LEVEL = 40;
 
+// Abilities 4-6 per class unlock at levels 10 / 20 / 30. Three can be slotted at once.
+const EXTRA_ABILITIES = {
+  marine: [
+    { id: "focus", name: "Focused Fire", cost: 35, cd: 10, type: "dmg", mult: 2.5, desc: "Concentrated burst for 250% damage." },
+    { id: "medic", name: "Medic Support", cost: 40, cd: 24, type: "heal", amt: 0.3, desc: "A medic patches you up for 30% max health." },
+    { id: "laser", name: "Laser Targeting", cost: 40, cd: 30, type: "buff", dur: 10, buff: { crit: 0.25, atk: 0.2 }, desc: "+25% critical chance and +20% damage for 10s." } ],
+  firebat: [
+    { id: "flamewave", name: "Flame Wave", cost: 30, cd: 9, type: "dmg", mult: 2.4, desc: "A wall of fire for 240% damage." },
+    { id: "napalm", name: "Napalm Shell", cost: 40, cd: 14, type: "dot", mult: 4.5, dur: 6, desc: "Sticky fire for 450% damage over 6s." },
+    { id: "jugger", name: "Juggernaut Plating", cost: 35, cd: 25, type: "shield", amt: 0.4, desc: "Absorb damage equal to 40% max health." } ],
+  ghost: [
+    { id: "lockdown", name: "Lockdown", cost: 35, cd: 18, type: "dmg", mult: 1.2, stun: 3, desc: "120% damage and stun for 3s." },
+    { id: "siphon", name: "Neural Siphon", cost: 35, cd: 25, type: "heal", amt: 0.25, desc: "Drain the target's mind to restore 25% max health." },
+    { id: "spectre", name: "Spectre Rounds", cost: 45, cd: 28, type: "buff", dur: 8, buff: { atk: 0.5 }, desc: "+50% damage for 8s." } ],
+  zealot: [
+    { id: "zstrike", name: "Zealous Strike", cost: 45, cd: 12, type: "dmg", mult: 3.2, desc: "A blade flurry for 320% damage." },
+    { id: "grace", name: "Khala's Grace", cost: 40, cd: 26, type: "heal", amt: 0.3, desc: "Restore 30% max health." },
+    { id: "pblades", name: "Psionic Blades", cost: 35, cd: 24, type: "buff", dur: 8, buff: { crit: 0.25, aspd: 0.2 }, desc: "+25% critical chance and +20% attack speed for 8s." } ],
+  templar: [
+    { id: "lash", name: "Psionic Lash", cost: 35, cd: 9, type: "dmg", mult: 2.8, desc: "Lash the target for 280% damage." },
+    { id: "surge", name: "Plasma Surge", cost: 45, cd: 28, type: "shield", amt: 0.45, desc: "Absorb damage equal to 45% max health." },
+    { id: "archon", name: "Archon Form", cost: 60, cd: 45, type: "buff", dur: 10, buff: { atk: 0.8 }, desc: "+80% damage for 10s." } ],
+  dark: [
+    { id: "mindblast", name: "Mind Blast", cost: 30, cd: 15, type: "dmg", mult: 1.6, stun: 2, desc: "160% damage and stun for 2s." },
+    { id: "vdrain", name: "Void Drain", cost: 35, cd: 22, type: "heal", amt: 0.25, desc: "Restore 25% max health." },
+    { id: "sfury", name: "Shadow Fury", cost: 50, cd: 14, type: "dmg", mult: 4, desc: "A storm of strikes for 400% damage." } ],
+  zergling: [
+    { id: "shred", name: "Shred", cost: 25, cd: 10, type: "dot", mult: 3.2, dur: 5, desc: "Bleed for 320% damage over 5s." },
+    { id: "brood", name: "Spawn Broodlings", cost: 40, cd: 14, type: "dmg", mult: 3.0, desc: "Broodlings swarm for 300% damage." },
+    { id: "srage", name: "Swarm Rage", cost: 40, cd: 30, type: "buff", dur: 8, buff: { atk: 0.4, aspd: 0.2 }, desc: "+40% damage and +20% attack speed for 8s." } ],
+  hydralisk: [
+    { id: "augments", name: "Muscular Augments", cost: 35, cd: 24, type: "buff", dur: 8, buff: { aspd: 0.5 }, desc: "+50% attack speed for 8s." },
+    { id: "carapace", name: "Regenerative Carapace", cost: 40, cd: 26, type: "heal", amt: 0.3, desc: "Restore 30% max health." },
+    { id: "frenzy", name: "Frenzy Volley", cost: 55, cd: 16, type: "dmg", mult: 4, desc: "A frenzied volley for 400% damage." } ],
+  roach: [
+    { id: "cbile", name: "Corrosive Bile", cost: 35, cd: 11, type: "dmg", mult: 2.6, stun: 1, desc: "260% damage and stun for 1s." },
+    { id: "bile", name: "Bile Launch", cost: 30, cd: 12, type: "dot", mult: 3.5, dur: 5, desc: "Acid pools for 350% damage over 5s." },
+    { id: "glial", name: "Glial Reconstitution", cost: 30, cd: 24, type: "buff", dur: 8, buff: { aspd: 0.4 }, desc: "+40% attack speed for 8s." } ],
+};
+for (const k in EXTRA_ABILITIES) EXTRA_ABILITIES[k].forEach((a, i) => CLASSES[k].abilities.push({ ...a, lvl: 10 + i * 10 }));
+const abLvl = a => a.lvl || 1;
+
+// Companions join after you defeat the boss of their zone and fight beside you in dungeons and raids.
+const COMPANIONS = [
+  { id: "raynor", name: "Jim Raynor", role: "dps", from: 0, blurb: "Marshal turned rebel. Steady fire and no quit in him." },
+  { id: "kerrigan", name: "Sarah Kerrigan", role: "dps", from: 1, blurb: "Ghost operative with a telepath's aim. Hits harder than anyone in the sector." },
+  { id: "zeratul", name: "Zeratul", role: "dps", from: 2, blurb: "Dark Prelate of the Nerazim. Strikes from the shadows." },
+  { id: "tassadar", name: "Tassadar", role: "healer", from: 3, blurb: "High Templar who bridged the Khala and the Void. Keeps the party standing." },
+  { id: "fenix", name: "Fenix", role: "tank", from: 4, blurb: "Praetor reborn in a dragoon shell. Draws fire so others can work." },
+  { id: "morales", name: "Lt. Lily Morales", role: "healer", from: 5, blurb: "Raiders field medic. Patches up anyone, anywhere, under fire." },
+  { id: "dehaka", name: "Dehaka", role: "tank", from: 6, blurb: "Primal pack leader who grows stronger with every essence he devours." },
+];
+const ROLE_LABEL = { dps: "Damage", tank: "Tank", healer: "Healer" };
+
+// One instance per zone, unlocked by that zone's boss. Two are raids: longer and harder, with better loot.
+const DUNGEONS = [
+  { zone: 0, name: "The Old Mines", blurb: "Abandoned mineral tunnels under Backwater Station, now a nest.",
+    enc: [ { name: "Scantid Swarm" }, { name: "Feral Zergling Pack", aspd: 1.4, atk: .8 }, { name: "Tunnel Broodlord", hp: 1.2 } ],
+    boss: { name: "The Brutalisk", title: "Beast of the deep tunnels" } },
+  { zone: 1, name: "Psi Emitter Vaults", blurb: "Mengsk's secret vaults beneath Tarsonis City, where the psi emitters were built.",
+    enc: [ { name: "Confederate Wraith Crew" }, { name: "Vault Security Goliath", hp: 1.3, aspd: .8 }, { name: "Emitter Guardian", hp: 1.1 } ],
+    boss: { name: "The Odin", title: "Prototype war machine" } },
+  { zone: 2, name: "Char Hive Clusters", blurb: "Living tunnels of the Tiamat brood, pulsing with creep.",
+    enc: [ { name: "Hunter Killer Hydralisks" }, { name: "Spawning Pool Guardians", aspd: 1.3, atk: .85 }, { name: "Infestor Nest", hp: 1.2 } ],
+    boss: { name: "Daggoth", title: "Cerebrate of the Tiamat Brood" } },
+  { zone: 3, name: "Siege of Antioch", raid: true, blurb: "The last Protoss stronghold on Aiur, overrun by the Swarm. A raid for a full party.",
+    enc: [ { name: "Broodling Tide", aspd: 1.4, atk: .8 }, { name: "Torrasque", hp: 1.4, aspd: .7 }, { name: "Guardian Flock" }, { name: "Defiler Coven", hp: .9, atk: 1.2 } ],
+    boss: { name: "Kerrigan's Shadow", title: "Echo of the Queen of Blades" } },
+  { zone: 4, name: "Xel'Naga Temple", blurb: "The ancient temple at the heart of Shakuras, and the experiments hidden in it.",
+    enc: [ { name: "Temple Sentinel" }, { name: "Infested Dark Templar", atk: 1.2 }, { name: "Hybrid Spawn", hp: 1.3 } ],
+    boss: { name: "Samir Duran", title: "Servant of the Dark Voice" } },
+  { zone: 5, name: "Palace Vaults", blurb: "The emperor's private armories beneath Augustgrad.",
+    enc: [ { name: "Royal Guard Marines" }, { name: "Thor Prototype", hp: 1.4, aspd: .7 }, { name: "Spectre Detail", atk: 1.25 } ],
+    boss: { name: "Gabriel Tosh", title: "Rogue Spectre" } },
+  { zone: 6, name: "Moebius Laboratories", blurb: "Where the Moebius Foundation grew hybrids for a god.",
+    enc: [ { name: "Lab Security Team" }, { name: "Hybrid Behemoth", hp: 1.5, aspd: .7 }, { name: "Containment Breach", aspd: 1.3, atk: .85 } ],
+    boss: { name: "Dr. Emil Narud", title: "Architect of the hybrids" } },
+  { zone: 7, name: "Amon's Sanctum", raid: true, blurb: "The heart of Amon's power in the Void. The final raid.",
+    enc: [ { name: "Void Templar Host" }, { name: "Hybrid Nemesis", hp: 1.4, aspd: .7 }, { name: "Shadow Swarm", aspd: 1.4, atk: .8 }, { name: "Dark Archon Choir", hp: 1.1, atk: 1.15 } ],
+    boss: { name: "Avatar of Amon", title: "The fallen Xel'Naga made flesh" } },
+];
+const dLevel = dg => Math.min(MAX_LEVEL + 3, ZONES[dg.zone].max + (dg.raid ? 3 : 2));
+const D_LOCK = 20 * 60, RAID_LOCK = 2 * 3600; // in game-time seconds
+
 const SLOTS = ["weapon", "armor", "helm", "boots", "implant"];
 const SLOT_LABEL = { weapon: "Weapon", armor: "Armor", helm: "Head", boots: "Legs", implant: "Implant" };
 const SLOT_NAMES = {
@@ -513,6 +612,7 @@ const DEFAULT_POL = {
   autopilot: true, engage: true, abilities: true, restAt: 40, restTo: 95,
   equip: true, sell: 2, talents: true, upgrades: true, crates: true,
   advance: true, boss: true, bossMargin: 1.3, retreat: true, ascend: false,
+  loadout: true, dungeons: true,
 };
 
 /* ============================================================================
@@ -547,7 +647,7 @@ function newGame(name, race, cls, carry) {
     tal: Object.fromEntries(TALENTS.map(t => [t.id, 0])), talPts: 0,
     pol: { ...DEFAULT_POL, ...(carry?.pol || {}) },
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
-    deaths: [], bossNote: "", stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed } : {}) },
+    deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed } : {}) },
     log: [], feed: [], lastSeen: Date.now(),
   };
   s.gear.weapon = makeItem(s, "weapon", 1, 0);
@@ -687,7 +787,8 @@ function step(s, dt) {
     case "rest":
       s.hp = Math.min(d.hp, s.hp + d.hp * 0.07 * dt);
       s.en = Math.min(100, s.en + 8 * dt);
-      if (s.hp >= d.hp * (s.pol.autopilot ? s.pol.restTo / 100 : 1) - 0.01) {
+      if (s.run) for (const m of s.run.party) m.hp = Math.min(m.max, m.hp + m.max * 0.07 * dt);
+      if (s.hp >= d.hp * (s.pol.autopilot ? s.pol.restTo / 100 : 1) - 0.01 && partyRested(s)) {
         s.mode = auto(s, "engage") ? "seek" : "idle"; s.timer = 1;
         log(s, "k", "Rested and ready.");
       }
@@ -697,7 +798,7 @@ function step(s, dt) {
       break;
     case "seek":
       s.timer -= dt;
-      if (s.timer <= 0) { s.foe = spawnFoe(s, false); s.mode = "fight"; s.atkT = 0; log(s, "k", `Contact: ${s.foe.name} (lvl ${s.foe.L}).`); }
+      if (s.timer <= 0) { s.foe = s.run ? spawnRunFoe(s) : spawnFoe(s, false); s.mode = "fight"; s.atkT = 0; log(s, "k", `Contact: ${s.foe.name} (lvl ${s.foe.L}).`); }
       break;
     case "fight":
       fight(s, d, dt);
@@ -728,6 +829,7 @@ function fight(s, d, dt) {
   for (const x of f.dots) { const t = Math.min(dt, x.t); f.hp -= x.dps * t * (1 - dr(f.def, s.level)); x.t -= dt; }
   f.dots = f.dots.filter(x => x.t > 0);
   // AI ability usage
+  if (s.run && f.hp > 0) partyTick(s, d, dt);
   if (auto(s, "abilities") && f.hp > 0) aiAbilities(s, d);
   if (s.foe !== f) return; // an ability finished it off
   if (f.hp <= 0) return killFoe(s, d);
@@ -737,6 +839,8 @@ function fight(s, d, dt) {
     f.atkT += dt * f.aspd;
     while (f.atkT >= 1) {
       f.atkT -= 1;
+      const tgt = pickTarget(s);
+      if (tgt) { hitCompanion(s, tgt, f); continue; }
       if (rnd() < b.dodge) continue;
       let dmg = f.atk * (0.9 + rnd() * 0.2) * (1 - dr(d.def * (1 + b.def), f.L));
       s.sinceHit = 0;
@@ -784,9 +888,9 @@ function aiAbilities(s, d) {
   const abs = CLASSES[s.cls].abilities, f = s.foe, hpf = s.hp / d.hp;
   const hitDmg = d.atk * (1 - dr(f.def, s.level));
   const longFight = f.boss || f.hp > hitDmg * 4;
-  const defensive = abs.findIndex(a => a.type === "heal" || a.type === "shield" || (a.buff && a.buff.dodge));
-  const reserve = defensive >= 0 && hpf < 0.6 && !s.cds[abs[defensive].id] ? abs[defensive].cost : 0;
-  for (let i = 0; i < abs.length; i++) {
+  const defensive = s.loadout.find(i => isDefensive(abs[i]));
+  const reserve = defensive !== undefined && hpf < 0.6 && !s.cds[abs[defensive].id] ? abs[defensive].cost : 0;
+  for (const i of s.loadout) {
     const a = abs[i];
     if (s.cds[a.id] || s.en < a.cost) continue;
     let want = false;
@@ -806,7 +910,7 @@ function killFoe(s, d) {
   const diff = f.L - s.level;
   const xpMod = clamp(1 + diff * (diff > 0 ? 0.1 : 0.15), 0.3, 1.5);
   const ess = 1 + 0.04 * s.essence;
-  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1);
+  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1);
   let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4);
   let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 ? 1 + Math.floor(f.L * 0.15) : 0;
   s.minerals += min; s.gas += gas;
@@ -814,11 +918,13 @@ function killFoe(s, d) {
   log(s, "g", `${f.name} destroyed. +${fmt(xp)} xp, +${fmt(min)} minerals${gas ? `, +${gas} gas` : ""}.`);
   gainXp(s, xp);
   // loot
-  if (f.boss || rnd() < 0.16) {
-    const rarity = f.boss ? Math.max(2, rollRarity(2)) : rollRarity(0);
-    const it = makeItem(s, f.boss ? pick(SLOTS) : pick(SLOTS), f.L, rarity);
-    gainItem(s, it);
+  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || rnd() < (f.run ? 0.35 : 0.16) ? 1 : 0;
+  for (let i = 0; i < drops; i++) {
+    const floor = f.raid && f.boss ? 3 : f.boss ? 2 : 0;
+    const rarity = Math.max(floor, rollRarity(f.raid ? 4 : f.boss || f.run ? 2 : 0));
+    gainItem(s, makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, f.L), rarity));
   }
+  if (f.run) return runProgress(s, f);
   // quests
   const q = questState(s, s.zone);
   const qd = z.quests[q.i];
@@ -879,12 +985,137 @@ function heroDies(s) {
   log(s, "h", `You were defeated by ${s.foe ? s.foe.name : "the enemy"}.`);
   s.foe = null; s.buffs = [];
   s.stats.deaths++;
+  if (s.run) { failRun(s); return; }
   s.deaths.push(s.stats.played);
   s.deaths = s.deaths.filter(t => s.stats.played - t < 300);
   if (wasBoss) { s.bossLoss = s.level; decide(s, "Boss", "Lost the boss fight. Will wait for a level before trying again."); }
 }
 
 function questState(s, z) { return s.quests[z] || (s.quests[z] = { i: 0, c: 0 }); }
+
+/* ---------- companions, dungeons & raids ---------- */
+function compUnlocked(s, c) { return !!s.bosses[c.from]; }
+function compStats(s, id) {
+  const c = COMPANIONS.find(x => x.id === id), r = refHero(s.level), m = (1 + 0.1 * ((s.comp[id] || {}).rank || 0)) * (1 + 0.04 * s.essence);
+  if (c.role === "tank") return { role: "tank", max: r.hp * 2.4 * m, dps: r.dps * 0.35 * m, def: r.def * 2.2, heal: 0 };
+  if (c.role === "healer") return { role: "healer", max: r.hp * 0.85 * m, dps: r.dps * 0.25 * m, def: r.def, heal: r.hp * 0.045 * m };
+  return { role: "dps", max: r.hp * 0.85 * m, dps: r.dps * 0.75 * m, def: r.def, heal: 0 };
+}
+function bondCost(s, id) { return 8 + 6 * ((s.comp[id] || {}).rank || 0); }
+function partyRested(s) { return !s.run || s.run.party.every(m => m.hp >= m.max * 0.9); }
+function pickTarget(s) {
+  if (!s.run) return null;
+  const alive = s.run.party.filter(m => m.hp > 0);
+  const tank = alive.find(m => compStats(s, m.id).role === "tank");
+  if (tank && rnd() < 0.85) return tank;
+  if (!alive.length || rnd() < 0.5) return null;
+  return pick(alive);
+}
+function hitCompanion(s, m, f) {
+  const cs = compStats(s, m.id);
+  m.hp -= f.atk * (0.9 + rnd() * 0.2) * (1 - dr(cs.def, f.L));
+  if (m.hp <= 0) { m.hp = 0; log(s, "h", `${COMPANIONS.find(c => c.id === m.id).name} is down.`); }
+}
+function partyTick(s, d, dt) {
+  const f = s.foe;
+  for (const m of s.run.party) {
+    if (m.hp <= 0) continue;
+    const cs = compStats(s, m.id);
+    m.max = cs.max;
+    f.hp -= cs.dps * dt * (1 - dr(f.def, s.level));
+    if (cs.heal) {
+      // heal whoever is lowest, hero included
+      let low = { r: s.hp / d.hp, hero: true };
+      for (const o of s.run.party) if (o.hp > 0 && o.hp / o.max < low.r) low = { r: o.hp / o.max, m: o };
+      if (low.hero) s.hp = Math.min(d.hp, s.hp + cs.heal * dt); else low.m.hp = Math.min(low.m.max, low.m.hp + cs.heal * dt);
+    }
+  }
+}
+function dungeonReady(s, i) {
+  const dg = DUNGEONS[i];
+  if (!s.bosses[dg.zone]) return "Defeat " + ZONES[dg.zone].boss.name + " to unlock.";
+  const left = (s.dcd[i] || 0) - (s.stats.totalPlayed || 0);
+  if (left > 0) return `Locked out for ${dur(left)}.`;
+  return "";
+}
+function bestParty(s) {
+  const open = COMPANIONS.filter(c => compUnlocked(s, c));
+  const by = role => open.filter(c => c.role === role).sort((a, b) => ((s.comp[b.id] || {}).rank || 0) - ((s.comp[a.id] || {}).rank || 0) || b.from - a.from);
+  const t = by("tank")[0], h = by("healer")[0], dps = by("dps");
+  const out = [];
+  if (t) out.push(t.id);
+  if (h) out.push(h.id);
+  for (const c of dps) if (out.length < 2) out.push(c.id);
+  return out.slice(0, 2);
+}
+function enterRun(s, i, party, quiet) {
+  const dg = DUNGEONS[i];
+  s.run = { d: i, enc: 0, party: party.map(id => { const cs = compStats(s, id); return { id, hp: cs.max, max: cs.max }; }) };
+  s.foe = null; s.mode = "seek"; s.timer = 1.5; s.deaths = [];
+  if (!quiet) log(s, "w", `Entering ${dg.name}${party.length ? " with " + party.map(id => COMPANIONS.find(c => c.id === id).name).join(" and ") : " alone"}.`);
+  bump();
+}
+function spawnRunFoe(s) {
+  const dg = DUNGEONS[s.run.d], L = dLevel(dg), boss = s.run.enc >= dg.enc.length;
+  const e = boss ? dg.boss : dg.enc[s.run.enc];
+  const f = foeStats(L, e, boss);
+  const hpM = (dg.raid ? 2.7 : 2.3) * (boss ? 1.6 : 1), atkM = dg.raid ? 1.2 : 1.05;
+  return { name: e.name, title: boss ? dg.boss.title : "", idx: -1, L, hp: f.hp * hpM, max: f.hp * hpM, atk: f.atk * atkM, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss, run: true, raid: !!dg.raid };
+}
+function runProgress(s, f) {
+  const dg = DUNGEONS[s.run.d];
+  s.run.enc++;
+  if (f.boss) {
+    const marks = (dg.raid ? 20 : 6) + dg.zone * 2;
+    s.marks += marks;
+    s.dcd[s.run.d] = (s.stats.totalPlayed || 0) + (dg.raid ? RAID_LOCK : D_LOCK);
+    s.stats.runs = (s.stats.runs || 0) + 1;
+    log(s, "w", `${dg.name} cleared! +${marks} Valor.`);
+    decide(s, dg.raid ? "Raid" : "Dungeon", `Cleared ${dg.name}. Earned ${marks} Valor.`);
+    s.run = null; bump();
+  } else log(s, "k", `Encounter ${s.run.enc} of ${dg.enc.length + 1} down.`);
+  s.mode = auto(s, "engage") ? "seek" : "idle";
+  s.timer = 1.5;
+}
+function failRun(s) {
+  const dg = DUNGEONS[s.run.d];
+  log(s, "h", `The party wiped in ${dg.name}. Back to ${zoneOf(s).name}.`);
+  decide(s, dg.raid ? "Raid" : "Dungeon", `Wiped in ${dg.name} at encounter ${s.run.enc + 1}. Will try again after the next level.`);
+  s.dfail = s.dfail || {}; s.dfail[s.run.d] = s.level;
+  s.run = null; bump();
+}
+function leaveRun(s) { if (!s.run) return; log(s, "k", `You leave ${DUNGEONS[s.run.d].name}.`); s.run = null; s.foe = null; s.mode = auto(s, "engage") ? "seek" : "idle"; s.timer = 1; bump(); }
+// Rehearse a full run on a copy of the hero and report how many of n attempts were cleared.
+function rehearse(s, i, party, n) {
+  let wins = 0;
+  for (let k = 0; k < n; k++) {
+    const c = JSON.parse(JSON.stringify(s));
+    c.pol = { ...c.pol, autopilot: true, engage: true, abilities: true, dungeons: false, advance: false, boss: false, retreat: false, crates: false, upgrades: false, ascend: false };
+    c.hp = derive(c).hp; c.en = 100; c.foe = null; c.log = []; c.feed = [];
+    enterRun(c, i, party, true);
+    for (let t = 0; t < 1200 && c.run; t += 1) step(c, 1);
+    if (!c.run && c.stats.runs > (s.stats.runs || 0)) wins++;
+  }
+  return wins;
+}
+
+/* ---------- ability loadout ---------- */
+const isDefensive = a => a.type === "heal" || a.type === "shield" || !!(a.buff && (a.buff.dodge || a.buff.def));
+function abilityValue(s, a) {
+  const d = derive(s), c = Math.max(a.cd, 1);
+  if (a.type === "dmg" || a.type === "dot") return (a.mult * (a.alwaysCrit ? 2 : 1) + (a.stun || 0) * d.aspd * 0.6) / (c * d.aspd);
+  if (a.type === "buff" && !isDefensive(a)) return ((a.buff.aspd || 0) + (a.buff.atk || 0) + (a.buff.crit || 0) / (1 + d.crit)) * a.dur / c;
+  if (a.type === "heal" || a.type === "shield") return a.amt / c * 10;
+  return ((a.buff.dodge || 0) + (a.buff.def || 0) * 0.4) * a.dur / c * 10;
+}
+function bestLoadout(s) {
+  const abs = CLASSES[s.cls].abilities.map((a, i) => ({ a, i })).filter(x => abLvl(x.a) <= s.level);
+  const def = abs.filter(x => isDefensive(x.a)).sort((x, y) => abilityValue(s, y.a) - abilityValue(s, x.a));
+  const off = abs.filter(x => !isDefensive(x.a)).sort((x, y) => abilityValue(s, y.a) - abilityValue(s, x.a));
+  const pickd = def.length ? [def[0]] : [];
+  const rest = off.concat(def.slice(1)).slice(0, 3 - pickd.length);
+  return pickd.concat(rest).map(x => x.i).sort((a, b) => a - b);
+}
 
 /* ---------- autopilot decision layer ---------- */
 function itemGain(s, it) {
@@ -905,6 +1136,7 @@ function startBoss(s) {
   bump();
 }
 function travel(s, z, why) {
+  if (s.run) return;
   s.zone = z; s.foe = null; s.mode = "seek"; s.timer = 2; s.seen[z] = true;
   log(s, "w", `Travelling to ${ZONES[z].name}.`);
   if (why) decide(s, "Travel", why);
@@ -914,7 +1146,7 @@ function travel(s, z, why) {
 function autopilot(s, d) {
   const P = s.pol, z = zoneOf(s);
   // 1. rest
-  if (P.engage && (s.mode === "seek" || s.mode === "idle") && s.hp < d.hp * P.restAt / 100) {
+  if (P.engage && (s.mode === "seek" || s.mode === "idle") && (s.hp < d.hp * P.restAt / 100 || (s.run && s.run.party.some(m => m.hp < m.max * P.restAt / 100)))) {
     s.mode = "rest";
     log(s, "k", `Autopilot: health at ${Math.round(s.hp / d.hp * 100)}%, below the ${P.restAt}% threshold. Resting to ${P.restTo}%.`);
   }
@@ -959,6 +1191,25 @@ function autopilot(s, d) {
       const o = opts[0]; buyUpgrade(s, o.u.id, true);
     }
   }
+  // 4b. ability loadout
+  if (P.loadout) {
+    const best = bestLoadout(s);
+    if (best.join() !== [...s.loadout].sort((a, b) => a - b).join()) {
+      const abs = CLASSES[s.cls].abilities;
+      const added = best.filter(i => !s.loadout.includes(i)).map(i => abs[i].name);
+      s.loadout = best;
+      decide(s, "Abilities", `Slotted ${added.join(", ")}. Loadout is now ${best.map(i => abs[i].name).join(", ")}.`);
+      bump();
+    }
+  }
+  // 4c. companion bonds
+  if (P.upgrades) for (const c of COMPANIONS) {
+    if (!compUnlocked(s, c)) continue;
+    if (!bestParty(s).includes(c.id)) continue;
+    const cost = bondCost(s, c.id), rank = (s.comp[c.id] || {}).rank || 0;
+    if (rank < 10 && s.marks >= cost) { s.marks -= cost; s.comp[c.id] = { rank: rank + 1 }; decide(s, "Companion", `Raised ${c.name}'s bond to rank ${rank + 1} for ${cost} Valor.`); bump(); }
+  }
+  if (s.run) return; // inside an instance: no travel, bosses or new runs
   // 5. supply crates
   if (P.crates) {
     const c = crateCost(s);
@@ -970,6 +1221,24 @@ function autopilot(s, d) {
     const r = bossOdds(s, d);
     if (r >= P.bossMargin) { decide(s, "Boss", `Estimated survival margin ${r.toFixed(2)}x (need ${P.bossMargin}x). Engaging ${z.boss.name}.`); startBoss(s); }
     else if (s.bossNote !== `${s.zone}:${s.level}`) { s.bossNote = `${s.zone}:${s.level}`; decide(s, "Boss", `Margin against ${z.boss.name} is ${r.toFixed(2)}x, need ${P.bossMargin}x. Farming for now.`); }
+  }
+  // 6b. dungeons and raids
+  if (P.dungeons && s.mode === "seek" && s.hp >= d.hp * 0.9 && (s.dtry || 0) <= s.stats.played) {
+    s.dtry = s.stats.played + 90;
+    for (let i = DUNGEONS.length - 1; i >= 0; i--) {
+      if (dungeonReady(s, i) || (s.dfail && s.dfail[i] >= s.level)) continue;
+      const dg = DUNGEONS[i], party = (s.partySel && s.partySel.length >= (dg.raid ? 2 : 1)) ? s.partySel.filter(id => COMPANIONS.some(c => c.id === id && compUnlocked(s, c))) : bestParty(s);
+      if (s.level < dLevel(dg) - 4 || s.level > dLevel(dg) + 4) continue; // too hard to try, or too easy to be worth it
+      if (party.length < (dg.raid ? 2 : 1)) continue;
+      const wins = rehearse(s, i, party, 3);
+      if (wins >= 2) {
+        decide(s, dg.raid ? "Raid" : "Dungeon", `Rehearsed ${dg.name} 3 times with ${party.map(id => COMPANIONS.find(c => c.id === id).name).join(" and ")}: cleared ${wins}. Going in.`);
+        enterRun(s, i, party);
+        return;
+      }
+      if (s.dnote !== i + ":" + s.level) { s.dnote = i + ":" + s.level; decide(s, dg.raid ? "Raid" : "Dungeon", `Rehearsed ${dg.name} 3 times: cleared ${wins}. Not ready yet.`); }
+      break;
+    }
   }
   // 7. retreat
   if (P.retreat && s.deaths.length >= 3 && s.zone > 0 && s.mode !== "fight") {
@@ -1023,8 +1292,9 @@ function buyCrate(s, byAI) {
 function ascendGain(s) { return 10 + Math.floor(s.level / 2) + s.stats.bosses * 2; }
 function ascend() {
   if (!S.bosses[ZONES.length - 1]) return;
+  if (S.run) leaveRun(S);
   const gain = ascendGain(S);
-  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats };
+  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks };
   S = newGame(S.name, S.race, S.cls, carry);
   log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience).`);
   decide(S, "Ascend", `Ascension ${S.ascensions}: kept research and gained ${gain} Xel'Naga essence.`);
@@ -1054,6 +1324,7 @@ function load() {
 }
 function hydrate(o) {
   if (!o || !o.cls || !CLASSES[o.cls]) return null;
+  o.loadout = o.loadout || [0, 1, 2]; o.marks = o.marks || 0; o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
   o.pol = { ...DEFAULT_POL, ...o.pol };
   o.seen = o.seen || { 0: true };
   return o;
@@ -1115,16 +1386,17 @@ function setupGameUI() {
   $("tName").textContent = S.name;
   $("aHeroName").textContent = S.name;
   $("hResName").textContent = RACES[S.race].res;
-  $("abilities").innerHTML = c.abilities.map((a, i) => `
+  UI.loadoutSig = S.loadout.join();
+  $("abilities").innerHTML = S.loadout.map((i, k) => [c.abilities[i], i, k]).map(([a, i, k]) => `
     <button class="ab" data-ab="${i}" title="${esc(a.desc)}">
       <span class="cdv"></span><span class="cdt"></span>
-      <b>${i + 1} · ${a.name}</b><small>${a.desc}</small>
+      <b>${k + 1} · ${a.name}</b><small>${a.desc}</small>
       <span class="cost">${a.cost ? a.cost + " " + RACES[S.race].res : a.hpCost ? Math.round(a.hpCost * 100) + "% health" : "free"} · ${a.cd}s</span>
     </button>`).join("");
   UI.rev++; UI.logRev++; UI.feedRev++;
   renderStatic();
 }
-const TABS = [["quests", "Quests"], ["map", "Map"], ["bag", "Gear"], ["research", "Research"], ["talents", "Talents"], ["policies", "Autopilot"], ["codex", "Codex"]];
+const TABS = [["quests", "Quests"], ["map", "Map"], ["dungeons", "Dungeons"], ["bag", "Gear"], ["talents", "Build"], ["research", "Research"], ["policies", "Autopilot"], ["codex", "Codex"]];
 
 let seenRev = 0, seenLog = 0, seenFeed = 0, seenTab = "";
 function renderStatic() {
@@ -1133,9 +1405,10 @@ function renderStatic() {
   $("tClass").textContent = `${RACES[S.race].name} ${c.name}${S.ascensions ? ` · Ascension ${S.ascensions}` : ""}`;
   $("tEssWrap").hidden = !S.essence;
   $("tEss").textContent = S.essence;
-  $("zName").textContent = z.name;
-  $("zSector").textContent = z.sector;
-  $("zRange").textContent = `Levels ${z.min}–${z.max}`;
+  const dg = S.run && DUNGEONS[S.run.d];
+  $("zName").textContent = dg ? dg.name : z.name;
+  $("zSector").textContent = dg ? `${dg.raid ? "Raid" : "Dungeon"} · ${z.name}` : z.sector;
+  $("zRange").textContent = dg ? `Level ${dLevel(dg)}` : `Levels ${z.min}–${z.max}`;
   $("hStats").innerHTML = [
     ["Damage", fmt(d.atk)], ["Attack speed", d.aspd.toFixed(2) + "/s"], ["Critical", pct(d.crit)],
     ["Armor", fmt(d.def) + ` (${pct(dr(d.def, S.level))})`], ["Max health", fmt(d.hp)], ["Power", fmt(power(S) / 10)],
@@ -1150,7 +1423,7 @@ function renderStatic() {
   renderPane();
 }
 function renderTabs() {
-  const dots = { talents: S.talPts > 0, bag: S.bag.some(it => itemGain(S, it) > 0.001) };
+  const dots = { talents: S.talPts > 0 || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
   $("tabs").innerHTML = TABS.map(([k, n]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${UI.tab === k}">${n}${dots[k] ? '<span class="dot"></span>' : ""}</button>`).join("");
 }
 function renderPane() {
@@ -1177,6 +1450,31 @@ function renderPane() {
         <div class="row"><span class="label">${S.bosses[i] ? "Cleared" : open ? "Open" : "Locked"}</span>${open && i !== S.zone ? `<button class="btn small" data-travel="${i}">Travel</button>` : i === S.zone ? '<span class="label">You are here</span>' : ""}</div></div>`;
     });
   }
+  if (UI.tab === "dungeons") {
+    h += `<div class="row"><span class="note">Valor: <span class="num">${S.marks}</span>. Earned in dungeons, spent on companion bonds.</span></div>`;
+    if (S.run) h += `<div class="card cur"><h3>In ${DUNGEONS[S.run.d].name}</h3><p>Encounter ${S.run.enc + 1} of ${DUNGEONS[S.run.d].enc.length + 1}. If you fall, the run ends.</p></div>`;
+    const sel = (S.partySel || bestParty(S)).filter(id => COMPANIONS.some(c => c.id === id && compUnlocked(S, c)));
+    h += `<div class="card"><div class="row"><h3>Party</h3><span class="note">${sel.length}/2 companions</span></div><div class="chips">`;
+    for (const c of COMPANIONS) {
+      const open = compUnlocked(S, c), on = sel.includes(c.id);
+      h += `<button class="chip" data-party="${c.id}" aria-pressed="${on}" ${!open || (!on && sel.length >= 2) || S.run ? "disabled" : ""}>${open ? esc(c.name) : "Locked"} · ${ROLE_LABEL[c.role]}</button>`;
+    }
+    h += `</div><p>${S.partySel ? "Your pick." : "Autopilot's pick: a tank and a healer when you have them, then damage."}</p></div>`;
+    DUNGEONS.forEach((dg, i) => {
+      const why = dungeonReady(S, i), open = !!S.bosses[dg.zone];
+      h += `<div class="card ${open ? "" : "locked"}"><div class="row"><h3>${dg.name} ${dg.raid ? '<span class="role raidtag">Raid</span>' : ""}</h3><span class="num">Lv ${dLevel(dg)}</span></div>
+        <p>${open ? dg.blurb : why}</p>${open ? `<p>${dg.enc.length} encounters, then ${dg.boss.name}. ${dg.raid ? "Needs 2 companions. Epic loot or better from the final boss." : "Rare loot or better from the boss."}</p>` : ""}
+        ${open ? `<div class="row"><span class="note">${why || "Ready"}</span><button class="btn small" data-enter="${i}" ${why || S.run || S.mode === "fight" || (dg.raid && sel.length < 2) ? "disabled" : ""}>Enter</button></div>` : ""}</div>`;
+    });
+    h += `<h3 class="label" style="margin-top:6px">Companions</h3>`;
+    for (const c of COMPANIONS) {
+      const open = compUnlocked(S, c), rank = (S.comp[c.id] || {}).rank || 0, cost = bondCost(S, c.id);
+      if (!open) { h += `<div class="item card locked"><span><b>???</b><span class="sub">Defeat ${ZONES[c.from].boss.name} to recruit.</span></span></div>`; continue; }
+      const cs = compStats(S, c.id);
+      h += `<div class="item"><span><b>${esc(c.name)}</b> <span class="role">${ROLE_LABEL[c.role]}</span><span class="sub">${esc(c.blurb)}</span><span class="sub">Bond ${rank}/10 · ${fmt(cs.max)} hp · ${fmt(cs.dps)} dps${cs.heal ? ` · heals ${fmt(cs.heal)}/s` : ""}</span></span>
+        <span class="btns"><button class="btn small" data-bond="${c.id}" ${rank >= 10 || S.marks < cost ? "disabled" : ""}>Bond +1 · ${cost}</button></span></div>`;
+    }
+  }
   if (UI.tab === "bag") {
     h += `<div class="row"><span class="note">${S.bag.length}/24 items · Supply crate: ${fmt(crateCost(S))} minerals</span><button class="btn small" data-act="crate" ${S.minerals < crateCost(S) ? "disabled" : ""}>Buy crate</button></div>`;
     if (!S.bag.length) h += `<p class="note">No spare gear. Enemies drop items about one kill in six, and bosses always drop rare or better.</p>`;
@@ -1196,6 +1494,14 @@ function renderPane() {
     }
   }
   if (UI.tab === "talents") {
+    const abs = CLASSES[S.cls].abilities;
+    h += `<div class="row"><h3 class="label">Abilities · ${S.loadout.length}/3 slotted</h3>${S.pol.autopilot && S.pol.loadout ? '<span class="note">Autopilot picks these</span>' : ""}</div>`;
+    abs.forEach((a, i) => {
+      const locked = abLvl(a) > S.level, on = S.loadout.includes(i);
+      h += `<div class="item ${locked ? "card locked" : ""}"><span><b>${a.name}</b> ${isDefensive(a) ? '<span class="role">Defensive</span>' : ""}<span class="sub">${a.desc}</span><span class="sub">${a.cost ? a.cost + " " + RACES[S.race].res : a.hpCost ? Math.round(a.hpCost * 100) + "% health" : "free"} · ${a.cd}s cooldown${locked ? ` · unlocks at level ${abLvl(a)}` : ""}</span></span>
+        <span class="btns"><button class="chip" data-slot="${i}" aria-pressed="${on}" ${locked || (!on && S.loadout.length >= 3) ? "disabled" : ""}>${on ? "Slotted" : "Slot"}</button></span></div>`;
+    });
+    h += `<h3 class="label" style="margin-top:6px">Talents</h3>`;
     h += `<p class="note">${S.talPts} unspent point${S.talPts === 1 ? "" : "s"}. You earn one per level.</p>`;
     for (const t of TALENTS) {
       h += `<div class="item"><span><b>${t.name}</b><span class="sub">${t.desc}</span><span class="pips" style="margin-top:5px">${Array.from({ length: TALENT_MAX }, (_, i) => `<i class="${i < S.tal[t.id] ? "on" : ""}"></i>`).join("")}</span></span>
@@ -1235,6 +1541,8 @@ function policiesPane() {
     ${tog("boss", "Challenge bosses", "Attack the zone boss once quests are done and the odds look good.")}
     <div class="pol"><span><b>Boss safety margin</b><small>How much stronger than the boss you must be, by estimate. Higher is safer, lower is faster.</small></span>
       <input type="number" id="polMargin" data-polnum="bossMargin" step="0.1" min="0.5" max="5" value="${P.bossMargin}"></div>
+    ${tog("loadout", "Pick abilities", "Slot the strongest three abilities as new ones unlock, keeping one defensive.")}
+    ${tog("dungeons", "Run dungeons and raids", "Rehearse the newest instance three times in its head and go in if it clears two.")}
     ${tog("advance", "Advance zones", "Move to the next zone once its boss is down and you meet the level.")}
     ${tog("retreat", "Fall back when losing", "After 3 deaths in 5 minutes, farm the previous zone for two levels.")}
     ${tog("ascend", "Auto-ascend", "Ascend as soon as Amon is defeated.")}`;
@@ -1276,8 +1584,10 @@ function renderLive() {
   else if (S.mode === "dead") ml = "Waiting for the medevac.";
   else ml = "Moving to the next contact.";
   $("modeLine").innerHTML = ml;
-  CLASSES[S.cls].abilities.forEach((a, i) => {
-    const b = document.querySelector(`[data-ab="${i}"]`); if (!b) return;
+  if (UI.loadoutSig !== S.loadout.join()) setupGameUI();
+  S.loadout.forEach(i => {
+    const a = CLASSES[S.cls].abilities[i];
+    const b = document.querySelector(`#abilities [data-ab="${i}"]`); if (!b) return;
     const cd = S.cds[a.id] || 0;
     b.querySelector(".cdv").style.width = cd > 0 ? cd / a.cd * 100 + "%" : "0%";
     b.querySelector(".cdt").textContent = cd > 0 ? Math.ceil(cd) + "s" : "";
@@ -1287,7 +1597,11 @@ function renderLive() {
   });
   $("engageBtn").disabled = !(S.mode === "idle" || S.mode === "rest");
   $("restBtn").disabled = !(S.mode === "idle" || S.mode === "seek") || S.hp >= d.hp - 0.5;
-  const q = questState(S, S.zone), bossReady = q.i >= z.quests.length && S.mode !== "fight" && S.mode !== "dead";
+  $("aParty").innerHTML = S.run ? S.run.party.map(m => { const c = COMPANIONS.find(x => x.id === m.id); return `<div class="member ${m.hp <= 0 ? "down" : ""}"><span>${esc(c.name)} <span class="role">${ROLE_LABEL[c.role]}</span></span><div class="bar" style="--c:var(--hp)"><i style="width:${clamp(m.hp / m.max * 100, 0, 100)}%"></i></div></div>`; }).join("") : "";
+  $("leaveBtn").hidden = !S.run;
+  $("leaveBtn").disabled = S.mode === "fight";
+  if (S.run) $("zRange").textContent = `Encounter ${Math.min(S.run.enc + 1, DUNGEONS[S.run.d].enc.length + 1)} of ${DUNGEONS[S.run.d].enc.length + 1}`;
+  const q = questState(S, S.zone), bossReady = !S.run && q.i >= z.quests.length && S.mode !== "fight" && S.mode !== "dead";
   $("bossBtn").disabled = !bossReady;
   $("bossBtn").textContent = S.bosses[S.zone] ? `Rematch ${z.boss.name}` : `Challenge ${z.boss.name}`;
   if (UI.logRev !== seenLog) {
@@ -1305,10 +1619,11 @@ function renderLive() {
 $("abilities").addEventListener("click", e => { const b = e.target.closest("[data-ab]"); if (b) useAbility(S, +b.dataset.ab, false); });
 document.addEventListener("keydown", e => {
   if (!S || $("game").hidden || e.target.matches("input, textarea, select")) return;
-  if (["1", "2", "3"].includes(e.key)) useAbility(S, +e.key - 1, false);
+  if (["1", "2", "3"].includes(e.key)) useAbility(S, S.loadout[+e.key - 1], false);
 });
 $("engageBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "rest") { S.mode = "seek"; S.timer = 0.5; } });
 $("restBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "seek") { S.mode = "rest"; log(S, "k", "You sit down to rest."); } });
+$("leaveBtn").addEventListener("click", () => leaveRun(S));
 $("bossBtn").addEventListener("click", () => { if (!$("bossBtn").disabled) startBoss(S); });
 $("apSwitch").addEventListener("click", () => {
   S.pol.autopilot = !S.pol.autopilot;
@@ -1319,10 +1634,30 @@ $("apSwitch").addEventListener("click", () => {
 $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) { UI.tab = b.dataset.tab; try { localStorage.setItem(KEY + "-tab", UI.tab); } catch (x) {} } });
 $("pane").addEventListener("click", e => {
   const t = e.target.closest("button"); if (!t) return;
-  if (t.dataset.travel) { if (S.mode !== "fight") travel(S, +t.dataset.travel); else toast("Finish the fight before travelling."); }
+  if (t.dataset.travel) { if (S.run) toast("Leave the instance before travelling."); else if (S.mode !== "fight") travel(S, +t.dataset.travel); else toast("Finish the fight before travelling."); }
   if (t.dataset.equip) { const it = S.bag.find(x => x.id === t.dataset.equip); if (it) { const old = S.gear[it.slot]; S.gear[it.slot] = it; S.bag.splice(S.bag.indexOf(it), 1); if (old) S.bag.push(old); log(S, "k", `Equipped ${it.name}.`); bump(); } }
   if (t.dataset.sell) { const it = S.bag.find(x => x.id === t.dataset.sell); if (it) { S.minerals += sellValue(it); S.bag.splice(S.bag.indexOf(it), 1); bump(); } }
   if (t.dataset.upg) buyUpgrade(S, t.dataset.upg, false);
+  if (t.dataset.slot) {
+    const i = +t.dataset.slot;
+    if (S.loadout.includes(i)) { if (S.loadout.length > 1) S.loadout = S.loadout.filter(x => x !== i); }
+    else if (S.loadout.length < 3) S.loadout = [...S.loadout, i];
+    if (S.pol.autopilot && S.pol.loadout) { S.pol.loadout = false; toast("Autopilot ability picking is now off, so your choice sticks."); }
+    bump();
+  }
+  if (t.dataset.party) {
+    const cur = (S.partySel || bestParty(S)).slice(), id = t.dataset.party;
+    S.partySel = cur.includes(id) ? cur.filter(x => x !== id) : cur.concat(id).slice(0, 2);
+    bump();
+  }
+  if (t.dataset.enter) {
+    const sel = (S.partySel || bestParty(S)).filter(id => COMPANIONS.some(c => c.id === id && compUnlocked(S, c)));
+    enterRun(S, +t.dataset.enter, sel);
+  }
+  if (t.dataset.bond) {
+    const id = t.dataset.bond, cost = bondCost(S, id), rank = (S.comp[id] || {}).rank || 0;
+    if (rank < 10 && S.marks >= cost) { S.marks -= cost; S.comp[id] = { rank: rank + 1 }; bump(); }
+  }
   if (t.dataset.tal) { if (S.talPts > 0 && S.tal[t.dataset.tal] < TALENT_MAX) { S.tal[t.dataset.tal]++; S.talPts--; bump(); } }
   if (t.dataset.pol) { S.pol[t.dataset.pol] = !S.pol[t.dataset.pol]; bump(); }
   const act = t.dataset.act;
