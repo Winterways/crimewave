@@ -306,6 +306,10 @@ The header's experience bar and the top of the Quests tab say "Level 8 in about 
 
 The Codex has a Controls card and `?` opens the same hotkey list in a window; Esc closes any window. Export can download the save as a text file (through the viewer's downloads capability inside claude.ai, where a plain link is blocked, and an ordinary link elsewhere) and Import can open one. The Gear tab sells every non-upgrade in one press. The Quests and Dungeons tabs show a dot when a boss or instance is waiting and the autopilot's rule for it is off. The away report lists the level span, bosses defeated, best find and feats by name under the numbers.
 
+## Named rares and trophies
+
+Each zone has one named rare (`RARES`): Gristle on Mar Sara, Agent Null on Tarsonis, Old Ash on Char, Kaldalis the Fallen on Aiur, the Umbral Stalker on Shakuras, Colonel Vance on Korhal, the Keeper on Ulnar and Narud's Echo in the Void. From level 4 one roams every fifteen to twenty-five minutes of play (never on the same spawn as a bounty target), with three times the health and 1.3 times the damage of a normal enemy, five times the pay, a "Rare sighting" banner and its own line and sprite. The first kill always drops that rare's trophy, an epic with a fixed name that reforging keeps (later kills drop one 30% of the time), and the Codex's Trophies card keeps the collection with each rare's story. Two feats (Big Game, Trophy Room) and the title "the Big Game Hunter" go with it; the away report names the rares hunted. Six-hour sims of all nine classes see 13 to 18 rares and 6 to 8 trophies, with Amon at 2.9 to 4.7 hours and no extra deaths.
+
 ## Titles
 
 Nineteen feats also name the hero: Brood Breaker, the Veteran, the Juggernaut, the God Slayer, the Ascended and so on (`TITLES`). The newest is worn as it is earned (the feat banner says so, the Chronicle records it) unless the player turns that off or picks one in the Codex's Titles card, which also lists the next titles to earn. The title shows beside the name in the header and in the roster, and carries through ascension with the feats.

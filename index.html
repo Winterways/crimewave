@@ -1002,6 +1002,24 @@ const rankIdx = L => Math.min(8, Math.floor((L - 1) / 5));
 const rankName = s => RANKS[s.race][rankIdx(s.level)];
 const STREAK_MAX = 30; // +1% xp and minerals per kill in a row, up to +30%
 const BOUNTY_TITLES = ["Overseer", "Warlord", "Alpha", "Elder", "Veteran", "Champion"];
+// Named rares: one per zone, roaming every twenty minutes or so of play from level 4. Tougher than a bounty target, five
+// times the pay, and the first kill always drops that rare's trophy, an epic with a fixed name. The Codex keeps the collection.
+const RARES = {
+  marsara: { name: "Gristle", title: "Alpha zergling", look: "Zergling", slot: "boots", trophy: "Gristle's Talons", line: "The brood's first hatchling on Mar Sara, twice the size of its siblings and old enough to have learned fear." },
+  tarsonis: { name: "Agent Null", title: "Rogue ghost", look: "Confederate Marine", slot: "implant", trophy: "Decommissioned Psi Dampener", line: "A Confederate ghost who never received the recall order. Still runs missions for a government that no longer exists." },
+  char: { name: "Old Ash", title: "Hunter killer", look: "Lurker", slot: "helm", trophy: "Ash-Scarred Visor", line: "A hunter killer that has survived every purge of Char's surface. The lava fields taught it patience." },
+  aiur: { name: "Kaldalis the Fallen", title: "Corrupted zealot", look: "Fanatic Zealot", slot: "armor", trophy: "Fallen Templar's Plate", line: "A zealot of the Conclave who heard the Dark Voice in the Khala and answered. He still fights with a templar's grace." },
+  shakuras: { name: "Umbral Stalker", title: "Shadow lurker", look: "Rogue Dark Templar", slot: "boots", trophy: "Umbral Striders", line: "Something that walks the twilight between the Nerazim warp gates and takes travellers one by one." },
+  korhal: { name: "Colonel Vance", title: "Dominion renegade", look: "Dominion Marauder", slot: "helm", trophy: "Vance's Command Visor", line: "Mengsk's siege commander, deserted with his battalion when the orders stopped making sense. He fights for his men now." },
+  ulnar: { name: "The Keeper", title: "Ancient construct", look: "Hybrid Reaver", slot: "implant", trophy: "Keeper's Core Shard", line: "A Xel'Naga sentinel that has guarded Ulnar's halls since before the Protoss had a name for themselves." },
+  void: { name: "Narud's Echo", title: "Void remnant", look: "Void Shade", slot: "armor", trophy: "Echo-Woven Mantle", line: "What is left of the shapeshifter Narud, still wearing a dozen faces at once in the dark of the Void." },
+};
+const RARE_GAP = () => 900 + rnd() * 600;
+function makeTrophy(s, r, L) {
+  const it = makeItem(s, r.slot, L, 3);
+  it.name = r.trophy; it.trophy = true;
+  return it;
+}
 // Feats: checklist of milestones, each paying Valor (and some a crate).
 const FEATS = [
   { id: "first", name: "First Blood", desc: "Destroy an enemy", valor: 2, test: s => s.stats.kills >= 1 },
@@ -1023,6 +1041,8 @@ const FEATS = [
   { id: "streak10", name: "Unstoppable", desc: "A 10-kill streak", valor: 5, prog: s => [s.bestStreak || 0, 10], test: s => (s.bestStreak || 0) >= 10 },
   { id: "streak30", name: "Juggernaut", desc: "A 30-kill streak", valor: 15, crate: true, prog: s => [s.bestStreak || 0, 30], test: s => (s.bestStreak || 0) >= 30 },
   { id: "bounty", name: "Bounty Hunter", desc: "Bring down a bounty target", valor: 5, test: s => (s.stats.bounties || 0) >= 1 },
+  { id: "trophy4", name: "Big Game", desc: "Collect 4 trophies from named rares", valor: 15, prog: s => [Object.keys(s.trophies || {}).length, 4], test: s => Object.keys(s.trophies || {}).length >= 4 },
+  { id: "trophy8", name: "Trophy Room", desc: "Collect every rare's trophy", valor: 30, crate: true, prog: s => [Object.keys(s.trophies || {}).length, Object.keys(RARES).length], test: s => Object.keys(s.trophies || {}).length >= Object.keys(RARES).length },
   { id: "bounty10", name: "Most Wanted", desc: "10 bounty targets", valor: 15, prog: s => [s.stats.bounties || 0, 10], test: s => (s.stats.bounties || 0) >= 10 },
   { id: "craft", name: "Tinkerer", desc: "Craft 10 items", valor: 10, prog: s => [s.stats.crafted || 0, 10], test: s => (s.stats.crafted || 0) >= 10 },
   { id: "mine", name: "Prospector", desc: "Mine 2,000 minerals", valor: 10, prog: s => [s.stats.mined || 0, 2000], test: s => (s.stats.mined || 0) >= 2000 },
@@ -1054,7 +1074,7 @@ const TITLES = [
   { feat: "boss1", t: "the Brood Breaker" }, { feat: "k1000", t: "of the Hecatomb" }, { feat: "l20", t: "the Veteran" },
   { feat: "boss4", t: "the Mind Killer" }, { feat: "streak30", t: "the Juggernaut" }, { feat: "legend", t: "the Legend" },
   { feat: "raid", t: "the Raid Leader" }, { feat: "bounty10", t: "Most Wanted" }, { feat: "intel24", t: "the Field Guide" },
-  { feat: "hybrid25", t: "the Hybrid Hunter" }, { feat: "l40", t: "the Apex" }, { feat: "marathon", t: "the Tireless" },
+  { feat: "hybrid25", t: "the Hybrid Hunter" }, { feat: "trophy8", t: "the Big Game Hunter" }, { feat: "l40", t: "the Apex" }, { feat: "marathon", t: "the Tireless" },
   { feat: "boss8", t: "the God Slayer" }, { feat: "traits3", t: "of the Inner Circle" }, { feat: "ascend", t: "the Ascended" },
   { feat: "daily30", t: "the Sector Veteran" }, { feat: "ascend3", t: "the Eternal" }, { feat: "k5000", t: "the Extinction Event" },
   { feat: "ascend10", t: "of the Void Beyond" },
@@ -1190,7 +1210,7 @@ function newGame(name, race, cls, carry) {
     tal: Object.fromEntries(TALENTS.map(t => [t.id, 0])), talPts: 0,
     pol: { ...DEFAULT_POL, ...(carry?.pol || {}) },
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
-    streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, title: carry?.title || "", titleAuto: carry?.titleAuto !== false, nextBounty: 480 + rnd() * 300,
+    streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, title: carry?.title || "", titleAuto: carry?.titleAuto !== false, nextBounty: 480 + rnd() * 300, nextRare: 600 + rnd() * 600, trophies: carry?.trophies || {},
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
     event: null, nextEvent: 600 + rnd() * 300, tips: { ...(carry?.tips || {}) }, chron: carry?.chron || [], daily: carry?.daily || { last: "", streak: 0, best: 0 }, rested: 0,
     id: Date.now().toString(36) + Math.floor(rnd() * 1e6).toString(36),
@@ -1319,6 +1339,15 @@ function spawnFoe(s, boss) {
     foe.hp *= 2.2; foe.max = foe.hp; foe.atk *= 1.25;
     log(s, "w", `Bounty target sighted: ${foe.name}!`);
     fx(s, "banner", { lines: ["BOUNTY", foe.name], col: "#ffd84a", snd: "bounty", small: evOn(s, "patrol") }); // a patrol brings several in a row, so those take the small banner
+  }
+  // a named rare: one per zone, the trophy on the first kill
+  const rare = !boss && !foe.elite && s.level >= 4 && RARES[z.id] && s.stats.played >= (s.nextRare ?? Infinity) ? RARES[z.id] : null;
+  if (rare) {
+    s.nextRare = s.stats.played + RARE_GAP();
+    foe.rare = true; foe.title = rare.title; foe.name = rare.name; foe.kind = rare.name; foe.look = rare.look; foe.idx = -1;
+    foe.hp *= 3; foe.max = foe.hp; foe.atk *= 1.3;
+    log(s, "w", `${rare.name}, ${rare.title.toLowerCase()}, has been sighted!`);
+    fx(s, "banner", { lines: ["RARE SIGHTING", `${rare.name} · ${rare.title}`], col: "#ff9f6b", snd: "bounty", small: true });
   }
   return foe;
 }
@@ -1546,7 +1575,7 @@ function killFoe(s, d) {
   const cap = streakCap(s), streakMul = 1 + Math.min(s.streak, cap) * 0.01 * hz(s, "streak");
   if (s.streak === 10 || s.streak === 20 || s.streak === cap) fx(s, "banner", { lines: [`${s.streak} KILL STREAK`, `+${Math.min(s.streak, cap)}% xp and minerals`], col: "#e8b43c", snd: "streak", small: true });
   contractEvent(s, "streak", s.streak);
-  const eliteMul = f.elite ? 3 : 1, pockets = (1 + 0.2 * perk(s, "pockets")) * (1 + CYCLE_PAY * (s.ascensions || 0)) * hz(s, "pay") * (1 + traits(s, "pay"));
+  const eliteMul = f.rare ? 5 : f.elite ? 3 : 1, pockets = (1 + 0.2 * perk(s, "pockets")) * (1 + CYCLE_PAY * (s.ascensions || 0)) * hz(s, "pay") * (1 + traits(s, "pay"));
   let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul * hz(s, "xp") * (1 + traits(s, "xp"));
   let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4) * streakMul * eliteMul * pockets;
   let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 || evOn(s, "leak") ? 1 + Math.floor(f.L * 0.15) : 0;
@@ -1555,6 +1584,13 @@ function killFoe(s, d) {
   if (f.elite) { gas += 3 + Math.floor(f.L / 5); s.stats.bounties = (s.stats.bounties || 0) + 1; if (rnd() < 0.3) gainKit(s, "Bounty cache"); }
   if (f.run && f.boss) gainKit(s, "Instance cache");
   if (f.hybrid) s.stats.hybrids = (s.stats.hybrids || 0) + 1;
+  if (f.rare) {
+    const r = RARES[z.id]; s.trophies = s.trophies || {}; const first = !s.trophies[f.kind];
+    s.trophies[f.kind] = (s.trophies[f.kind] || 0) + 1; s.stats.rares = (s.stats.rares || 0) + 1;
+    gas += 5 + Math.floor(f.L / 4);
+    if (first) { chron(s, `Hunted ${r.name} and took ${r.trophy}.`); log(s, "w", `${r.name} is down. ${r.trophy} is yours; the Codex keeps the record.`); }
+    if (first || rnd() < 0.3) gainItem(s, makeTrophy(s, r, Math.min(MAX_LEVEL, f.L)));
+  }
   gas = Math.round(gas * pockets);
   s.minerals += min; s.gas += gas;
   if (f.boss) { const n = f.raid ? 3 : f.run ? 2 : 1; s.mats.cores += n; log(s, "w", `+${n} ${PROF_NAMES[s.race].cores}.`); }
@@ -1567,9 +1603,9 @@ function killFoe(s, d) {
   if (!f.run && !f.boss) { contractEvent(s, "kills", 1); contractEvent(s, "foe", 1, f.idx); }
   gainXp(s, xp);
   // loot
-  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || f.hybrid || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) * (evOn(s, "field") ? 2 : 1) * hz(s, "drop") || s.stats.kills === 2 || s.stats.kills === 6 ? 1 : 0; // the second and sixth kills always drop something, so new players see loot in the first minute
+  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || f.rare || f.hybrid || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) * (evOn(s, "field") ? 2 : 1) * hz(s, "drop") || s.stats.kills === 2 || s.stats.kills === 6 ? 1 : 0; // the second and sixth kills always drop something, so new players see loot in the first minute
   for (let i = 0; i < drops; i++) {
-    const floor = f.raid && f.boss ? 3 : f.boss || f.elite ? 2 : f.hybrid ? 1 : 0;
+    const floor = f.raid && f.boss ? 3 : f.boss || f.elite || f.rare ? 2 : f.hybrid ? 1 : 0;
     const rarity = Math.max(floor, rollRarity(f.raid ? 4 : f.boss || f.run || f.hybrid ? 2 : 0));
     gainItem(s, makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, f.L), rarity));
   }
@@ -2190,7 +2226,7 @@ function reforgeItem(s, slot, byAI) {
   const it = s.gear[slot], c = reforgeCost(s, it);
   s.mats.scrap -= c.scrap; s.mats.cores -= c.cores;
   const nu = makeItem(s, slot, it.ilvl, it.rarity);
-  if (it.rarity === 4) nu.name = it.name; // a legendary keeps its name
+  if (it.rarity === 4 || it.trophy) { nu.name = it.name; nu.trophy = it.trophy; } // a legendary or a trophy keeps its name
   nu.crafted = it.crafted; nu.reforged = (it.reforged || 0) + 1;
   const gain = itemGain(s, nu);
   profGain(s, "craft", 12 + it.ilvl); s.stats.reforged = (s.stats.reforged || 0) + 1;
@@ -2272,7 +2308,7 @@ function ascend() {
   if (S.run) leaveRun(S);
   const gain = ascendGain(S);
   chron(S, `Ascended at level ${S.level}: cycle ${S.ascensions + 2} begins with ${S.essence + gain} essence.`);
-  const carry = { daily: S.daily, tips: S.tips, chron: S.chron, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, kits: S.kits, feats: S.feats, title: S.title, titleAuto: S.titleAuto, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
+  const carry = { daily: S.daily, tips: S.tips, chron: S.chron, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, kits: S.kits, feats: S.feats, title: S.title, titleAuto: S.titleAuto, trophies: S.trophies, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
   S = newGame(S.name, S.race, S.cls, carry);
   log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience) and a perk point. Cycle ${S.ascensions + 1} begins: enemies have +${Math.round(CYCLE_SCALE * S.ascensions * 100)}% health and damage and pay +${Math.round(CYCLE_PAY * S.ascensions * 100)}% minerals and gas.`);
   fx(S, "banner", { lines: [`ASCENSION ${S.ascensions}`, `+${gain} essence · 1 perk point · cycle ${S.ascensions + 1} begins`], col: "#c06cff", snd: "promote" });
@@ -2304,7 +2340,7 @@ function dailyCheck(s) {
 setInterval(() => { try { dailyCheck(S); } catch (e) {} }, 60000); // catches midnight passing while the tab is open
 
 function simulate(s, seconds) {
-  const before = { featIds: Object.keys(s.feats || {}), bossNames: ZONES.filter((z, i) => s.bosses[i]).map(z => z.boss.name), level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0, events: s.stats.events || 0 };
+  const before = { featIds: Object.keys(s.feats || {}), bossNames: ZONES.filter((z, i) => s.bosses[i]).map(z => z.boss.name), level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0, events: s.stats.events || 0, trophies: Object.keys(s.trophies || {}) };
   const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
   s.awayBest = null; // the best item found while away, recorded by gainItem
   const t0 = Date.now() - seconds * 1000;
@@ -2316,7 +2352,8 @@ function simulate(s, seconds) {
   const best = s.awayBest; delete s.awayBest;
   const newFeats = FEATS.filter(f => s.feats[f.id] && !before.featIds.includes(f.id)).map(f => f.name);
   const newBosses = ZONES.filter((z, i) => s.bosses[i] && !before.bossNames.includes(z.boss.name)).map(z => z.boss.name);
-  return { seconds, fromLevel: before.level, toLevel: s.level, best, newFeats, newBosses, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts, events: (s.stats.events || 0) - before.events, drop };
+  const newTrophies = Object.keys(s.trophies || {}).filter(k => !before.trophies.includes(k));
+  return { seconds, fromLevel: before.level, toLevel: s.level, best, newFeats, newBosses, newTrophies, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts, events: (s.stats.events || 0) - before.events, drop };
 }
 const OFFLINE_CAP = 8 * 3600;
 
@@ -2418,7 +2455,7 @@ function hydrate(o) {
   o.loadout = Array.isArray(o.loadout) ? [...new Set(o.loadout.filter(i => Number.isInteger(i) && i >= 0 && i < nAb))].slice(0, 3) : [];
   if (!o.loadout.length) o.loadout = [0, 1, 2];
   o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0; o.kits = Math.round(num(o.kits, 0, 0, KIT_MAX)); o.kitCd = num(o.kitCd, 0, 0);
-  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.title = typeof o.title === "string" ? o.title : ""; o.titleAuto = o.titleAuto !== false; o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
+  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.title = typeof o.title === "string" ? o.title : ""; o.titleAuto = o.titleAuto !== false; o.trophies = o.trophies && typeof o.trophies === "object" ? o.trophies : {}; o.nextRare = num(o.nextRare, (o.stats.played || 0) + 600, 0); o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
   o.contracts = Array.isArray(o.contracts) ? o.contracts.filter(c => c && CONTRACT_KINDS[c.kind] && typeof c.n === "number" && c.reward && (c.zone === undefined || ZONES[c.zone])).slice(0, 3) : [];
   o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0);
   o.event = o.event && EVENTS.some(e => e.id === o.event.id) && typeof o.event.t === "number" ? o.event : null; o.nextEvent = num(o.nextEvent, (o.stats.played || 0) + 600, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
@@ -2722,12 +2759,13 @@ function renderPane() {
     });
     const met = COMPANIONS.filter(c => S.bosses[c.from]);
     if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${{ dps: "Damage", healer: "Healer", tank: "Tank" }[c.role] || c.role}<span class="sub">${c.blurb}</span>${SIGNATURES[c.id] ? `<span class="sub">Signature: ${esc(SIGNATURES[c.id].name)}</span>` : ""}${TRAITS[c.id] && traitTier(S, c.id) ? `<span class="sub">Trait: ${esc(TRAITS[c.id].name)}, ${TRAITS[c.id].desc(TRAITS[c.id].v * traitTier(S, c.id))}</span>` : ""}</span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
+    h += trophiesCard();
     h += titlesCard();
     h += `<div class="card"><h3>Record</h3><div class="sum">
       <div><span class="label">Kills</span><span class="num">${fmt(S.stats.kills)}</span></div><div><span class="label">Bosses</span><span class="num">${S.stats.bosses}</span></div>
       <div><span class="label">Instances</span><span class="num">${S.stats.runs || 0}</span></div><div><span class="label">Deaths</span><span class="num">${S.stats.deaths}</span></div>
       <div><span class="label">Items found</span><span class="num">${fmt(S.stats.items)}</span></div><div><span class="label">Time played</span><span class="num">${dur(S.stats.totalPlayed || S.stats.played)}</span></div>
-      <div><span class="label">Bounties</span><span class="num">${S.stats.bounties || 0}</span></div><div><span class="label">Contracts</span><span class="num">${S.stats.contracts || 0}</span></div>
+      <div><span class="label">Bounties</span><span class="num">${S.stats.bounties || 0}</span></div><div><span class="label">Rares hunted</span><span class="num">${S.stats.rares || 0}</span></div><div><span class="label">Contracts</span><span class="num">${S.stats.contracts || 0}</span></div>
       <div><span class="label">Events</span><span class="num">${S.stats.events || 0}</span></div><div><span class="label">Best streak</span><span class="num">${S.bestStreak || 0}</span></div>
       <div><span class="label">Minerals mined</span><span class="num">${fmt(S.stats.mined || 0)}</span></div><div><span class="label">Items crafted</span><span class="num">${S.stats.crafted || 0}</span></div>
       <div><span class="label">Escapes</span><span class="num">${S.stats.flees || 0}</span></div><div><span class="label">Cycle</span><span class="num">${S.ascensions + 1}${S.ascensions ? ` (enemies +${Math.round(CYCLE_SCALE * S.ascensions * 100)}%)` : ""}</span></div>
@@ -2771,6 +2809,12 @@ function planSteps(s) {
 function planCard() {
   const steps = planSteps(S);
   return `<div class="card plan"><h3>${S.pol.autopilot ? "Autopilot plan" : "Plan"}</h3><ol>${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol></div>`;
+}
+function trophiesCard() {
+  const tr = S.trophies || {}, got = Object.keys(tr).length;
+  const rows = ZONES.map((z, i) => { const r = RARES[z.id]; if (!r) return ""; const n = tr[r.name] || 0, open = i <= S.unlocked;
+    return `<div class="beast ${n ? "" : "locked"}"><span><b>${n ? esc(r.name) : "???"}</b>${n ? `, ${esc(r.title)}` : ""}<span class="sub">${n ? `${esc(r.line)} Trophy: ${esc(r.trophy)}.` : open ? `Roams ${z.name}. Rares appear from level 4, every twenty minutes or so.` : `Roams ${z.name}.`}</span></span><span class="num">${n}</span></div>`; }).join("");
+  return `<div class="card"><div class="row"><h3>Trophies</h3><span class="num">${got} of ${Object.keys(RARES).length}</span></div><p>Named rares roam each zone. Each pays five times a normal kill and drops its trophy, an epic with a name of its own, on the first hunt.</p>${rows}</div>`;
 }
 function titlesCard() {
   const earned = TITLES.filter(t => S.feats[t.feat]), locked = TITLES.filter(t => !S.feats[t.feat]);
@@ -3137,6 +3181,7 @@ function awayHighlights(r) {
   if (r.levels > 0) h.push(`Level <b>${r.fromLevel}</b> to <b>${r.toLevel}</b>${r.toLevel >= MAX_LEVEL ? ", the cap" : ""}.`);
   if (r.newBosses && r.newBosses.length) h.push(`Defeated <b>${r.newBosses.map(esc).join("</b>, <b>")}</b>.`);
   if (r.best && r.best.rarity >= 2) h.push(`Best find: <b style="color:${RCOL[r.best.rarity]}">${esc(r.best.name)}</b>${r.best.gain > 0.001 ? ", equipped" : ""}.`);
+  if (r.newTrophies && r.newTrophies.length) h.push(`Hunted <b>${r.newTrophies.map(esc).join("</b>, <b>")}</b> and took the trophies.`);
   if (r.newFeats && r.newFeats.length) h.push(`Feats: <b>${r.newFeats.slice(0, 4).map(esc).join("</b>, <b>")}</b>${r.newFeats.length > 4 ? ` and ${r.newFeats.length - 4} more` : ""}.`);
   return h.length ? `<ul class="hl">${h.map(x => `<li>${x}</li>`).join("")}</ul>` : "";
 }
@@ -3505,7 +3550,7 @@ function processFx(L) {
     else if (e.type === "hurt") {
       R.foe.lunge = 1; if (e.big) { R.shake = Math.max(R.shake, 1); R.flash = Math.max(R.flash || 0, .5); }
       const tgt = e.to === "hero" ? { x: heroX, y: heroY } : { x: L.comps[e.to] ? L.comps[e.to].x : heroX, y: heroY + 6 * L.k };
-      if (S.foe && RANGED.has(foeLook(S.foe.name).kind)) R.shots.push({ x1: foeX - 20 * L.k, y1: foeY, x2: tgt.x, y2: tgt.y, life: 1, col: foeLook(S.foe.name).pal.glow });
+      if (S.foe && RANGED.has(foeLook(S.foe.look || S.foe.name).kind)) R.shots.push({ x1: foeX - 20 * L.k, y1: foeY, x2: tgt.x, y2: tgt.y, life: 1, col: foeLook(S.foe.name).pal.glow });
       if (e.to === "hero") { R.hero.flash = 1; addText(heroX + (Math.random() - .5) * 20, heroY - 34 * L.k, fmt(e.dmg), "#ff7b6b", false); sfx("hurt"); }
       if (S.foe && S.foe.boss) R.shake = Math.max(R.shake, .4);
     } else if (e.type === "sig") {
@@ -3605,7 +3650,7 @@ function renderScene(now) {
   // foe (and fading ghost of the last one)
   if (R.ghost) { R.ghost.life -= dt * 1.6; if (R.ghost.life <= 0) R.ghost = null; else drawUnit(c, R.ghost.kind, R.ghost.pal, L.foe.x + R.ghost.x, L.foe.y + (1 - R.ghost.life) * 10 * L.k, R.ghost.scale, -1, 0, 0, R.ghost.life * .8); }
   if (S.foe) {
-    const look = foeLook(S.foe.name), scale = L.k * (S.foe.boss ? 1.45 : 1);
+    const look = foeLook(S.foe.look || S.foe.name), scale = L.k * (S.foe.boss ? 1.45 : S.foe.rare ? 1.2 : 1);
     R.foeRef = { kind: look.kind, pal: look.pal, scale };
     if (S.foe.boss && !REDUCED) { const bg = c.createRadialGradient(L.foe.x, L.foe.y - 50 * L.k, 4, L.foe.x, L.foe.y - 50 * L.k, 90 * L.k); bg.addColorStop(0, look.pal.glow + "33"); bg.addColorStop(1, "rgba(0,0,0,0)"); c.fillStyle = bg; c.fillRect(0, 0, W, H); }
     if (S.foe.elite) { glowOn(c, "#ffd84a", 12); const ex = L.foe.x + R.foe.x, ey = L.foe.y - 96 * L.k + Math.sin(t * 3) * 3; poly(c, [ex - 7, ey - 10, ex, ey - 2, ex + 7, ey - 10, ex + 5, ey + 2, ex - 5, ey + 2], "#ffd84a"); glowOff(c); }
