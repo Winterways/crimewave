@@ -862,7 +862,8 @@ const fmt = n => { n = Math.floor(n); if (n < 1e4) return String(n); if (n < 1e6
 const pct = n => (n * 100).toFixed(1) + "%";
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const dur = s => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`; };
-const xpNext = L => Math.floor(70 * Math.pow(L, 1.85) + 90);
+// The early levels come fast (level 2 in about five kills) and the curve reaches its full steepness at level 12.
+const xpNext = L => Math.floor((70 * Math.pow(L, 1.85) + 90) * Math.min(1, 0.28 + 0.065 * (L - 1)));
 const zoneOf = S => ZONES[S.zone];
 let uid = 1;
 
@@ -975,9 +976,10 @@ function refHero(L) {
 }
 function foeStats(L, e, boss) {
   const r = refHero(L);
+  const green = boss ? 1 : Math.min(1, 0.78 + 0.055 * (L - 1)); // the first few levels are a power fantasy: softer foes, fewer rests
   return {
-    hp: r.dps * 7.5 * (1 - dr(L * 1.2, L)) ** -1 * (e.hp || 1) * (boss ? 7 : 1),
-    atk: r.hp * 0.05 / (1 - dr(r.def, L)) * (e.atk || 1) / (e.aspd || 1) * (boss ? 1.25 : 1),
+    hp: r.dps * 7.5 * (1 - dr(L * 1.2, L)) ** -1 * (e.hp || 1) * (boss ? 7 : 1) * green,
+    atk: r.hp * 0.05 / (1 - dr(r.def, L)) * (e.atk || 1) / (e.aspd || 1) * (boss ? 1.25 : 1) * green,
     def: L * 1.2 * (boss ? 1.3 : 1), aspd: (e.aspd || 1) * (boss ? 0.9 : 1),
   };
 }
@@ -1196,7 +1198,7 @@ function killFoe(s, d) {
   if (!f.run && !f.boss) { contractEvent(s, "kills", 1); contractEvent(s, "foe", 1, f.idx); }
   gainXp(s, xp);
   // loot
-  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) ? 1 : 0;
+  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) || s.stats.kills === 2 || s.stats.kills === 6 ? 1 : 0; // the second and sixth kills always drop something, so new players see loot in the first minute
   for (let i = 0; i < drops; i++) {
     const floor = f.raid && f.boss ? 3 : f.boss || f.elite ? 2 : 0;
     const rarity = Math.max(floor, rollRarity(f.raid ? 4 : f.boss || f.run ? 2 : 0));
@@ -1855,7 +1857,9 @@ function hydrate(o) {
   // clamp anything a bad save or an old version could have left out of range
   o.level = num(o.level, 1, 1, MAX_LEVEL); o.xp = num(o.xp, 0, 0); o.minerals = num(o.minerals, 0, 0); o.gas = num(o.gas, 0, 0);
   o.essence = num(o.essence, 0, 0); o.ascensions = num(o.ascensions, 0, 0); o.talPts = num(o.talPts, 0, 0);
-  o.zone = num(o.zone, 0, 0, ZONES.length - 1); o.unlocked = num(o.unlocked, 0, o.zone, ZONES.length - 1);
+  o.bosses = o.bosses || {};
+  let floor = 0; while (floor < ZONES.length - 1 && o.bosses[floor]) floor++; // zones you have earned stay open even if the save lost the counter
+  o.unlocked = Math.max(floor, num(o.unlocked, 0, 0, ZONES.length - 1)); o.zone = num(o.zone, 0, 0, o.unlocked);
   o.en = num(o.en, 50, 0, 100); o.shield = num(o.shield, 0, 0); o.pshield = num(o.pshield, 0, 0); o.timer = num(o.timer, 1, 0, 60);
   o.gear = o.gear || {}; for (const k of SLOTS) if (o.gear[k] && (!o.gear[k].st || !SLOTS.includes(o.gear[k].slot))) o.gear[k] = null;
   o.bag = (o.bag || []).filter(it => it && it.st && SLOTS.includes(it.slot)).slice(0, 24);
@@ -1865,6 +1869,9 @@ function hydrate(o) {
   o.stats = { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(o.stats || {}) };
   o.log = Array.isArray(o.log) ? o.log : []; o.feed = Array.isArray(o.feed) ? o.feed : []; o.deaths = Array.isArray(o.deaths) ? o.deaths : [];
   if (!["fight", "seek", "rest", "idle", "dead", "mine"].includes(o.mode)) o.mode = "seek";
+  const f = o.foe;
+  if (f && !(typeof f.hp === "number" && typeof f.max === "number" && typeof f.atk === "number" && typeof f.L === "number" && f.name)) o.foe = null;
+  if (o.foe) { o.foe.dots = Array.isArray(o.foe.dots) ? o.foe.dots : []; o.foe.stun = num(o.foe.stun, 0, 0); o.foe.atkT = num(o.foe.atkT, 0, 0); o.foe.aspd = num(o.foe.aspd, 1, 0.1, 5); o.foe.def = num(o.foe.def, 0, 0); }
   if (o.mode === "fight" && !o.foe) o.mode = "seek";
   if (o.run && (!DUNGEONS[o.run.d] || !Array.isArray(o.run.party))) o.run = null;
   const nAb = CLASSES[o.cls].abilities.length;
@@ -1876,7 +1883,7 @@ function hydrate(o) {
   o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0);
   o.event = o.event && EVENTS.some(e => e.id === o.event.id) && typeof o.event.t === "number" ? o.event : null; o.nextEvent = num(o.nextEvent, (o.stats.played || 0) + 600, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
-  o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5);
+  o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5); o.pol.fleeAt = num(o.pol.fleeAt, 20, 5, 60);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
   const d = derive(o); o.hp = num(o.hp, d.hp, 0, d.hp);
   if (o.mode !== "dead" && o.hp <= 0) o.hp = d.hp * 0.5;
