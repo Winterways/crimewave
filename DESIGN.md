@@ -306,6 +306,10 @@ The header's experience bar and the top of the Quests tab say "Level 8 in about 
 
 The Codex has a Controls card and `?` opens the same hotkey list in a window; Esc closes any window. Export can download the save as a text file (through the viewer's downloads capability inside claude.ai, where a plain link is blocked, and an ordinary link elsewhere) and Import can open one. The Gear tab sells every non-upgrade in one press. The Quests and Dungeons tabs show a dot when a boss or instance is waiting and the autopilot's rule for it is off. The away report lists the level span, bosses defeated, best find and feats by name under the numbers.
 
+## Zone mastery
+
+Every open zone on the Map tab shows a mastery row with five chips: Quests, Boss, Bestiary (all three regulars revealed), Trophy (the zone's named rare hunted) and Instance (its dungeon or raid cleared once). Finishing all five masters the zone: +10 Valor, a supply crate, a banner and a Chronicle line, and every mastered zone adds +2% experience, minerals and gas everywhere for good (`masteryMul`). The record survives ascension, so a second cycle starts with the bonus. Two feats (Cartographer, Master of the Sector) and the title "Master of the Sector" go with it. In six-hour sims the autopilot masters four to seven zones on its own, limited by the rares, and Amon falls at 2.6 to 4.3 hours with 0 to 1 deaths.
+
 ## Autopilot risk presets
 
 The Autopilot tab opens with three presets (Cautious, Balanced, Bold) that set the four numbers deciding how much risk the autopilot takes: rest-below and rest-to, flee-below and the boss margin. The switches are left alone. The row names the preset in use, or says the numbers are custom once one is edited; picking one writes a line to the decisions feed. Balanced is the defaults.
