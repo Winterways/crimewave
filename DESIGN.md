@@ -134,6 +134,13 @@ always left by instance bosses and sometimes by bounty elites. The autopilot use
 not an option (boss, instance, flee on cooldown or disabled); in an ordinary fight it still prefers to flee. A Kit
 button and the K key cover manual play; the Crafting tab has the card.
 
+- **Reforge** (Crafting tab): re-rolls an equipped item's stats and affix for scrap (80 + 8 per item level) and a core
+  (two for epics and legendaries); a better roll replaces the item, a worse one is thrown away. Added because six-hour
+  snapshots showed scrap at 22–29k and cores above 100 with nothing to buy. The autopilot reforges with spare materials
+  (keeping three crafts' worth of scrap and two cores), spreads attempts across slots, and gives up on an item after
+  three failed rolls until a new one is equipped; failed rolls go to the log, not the feed. Six-hour sims: about 50
+  reforges, 9–15 of them improvements, scrap down to 1–14k, Amon times unchanged. Feat Master Smith at 10 reforges.
+
 ## Reference material from Austin
 - `benilla-re` and `wowdecomp` (SatyPardus) are reverse-engineering projects for the WoW 1.12 and 3.3.5a clients.
 - The Azeroth Idle Windows client he uploaded is a Rust app built on benilla with Bevy UI. Its strings list the
