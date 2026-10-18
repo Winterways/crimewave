@@ -2916,6 +2916,8 @@ function planSteps(s) {
     if (dg) { const why = dungeonReady(s, dg[1]); out.push(why ? `${dg[0].name}: ${why.toLowerCase().replace(/\.$/, "")}.` : `Run ${dg[0].name} when a rehearsal clears it and health is up.`); }
   }
   if (planOf(s).mine) out.push(`Mine ${PLAN_MINE[planOf(s).mine].name.toLowerCase()} between fights here (your zone plan).`);
+  DOCTRINE_AT.forEach((L, tier) => { if (doctrineOpen(s, tier)) out.push(P.talents ? `Adopt the stronger level-${L} doctrine (Build tab).` : `A level-${L} doctrine is open in the Build tab; the Spend talent points rule is off, so the choice is yours.`); });
+  if (!(s.mastered || {})[z.id]) { const ms = masteryOf(s, s.zone), left = ms.filter(m => !m.ok); if (left.length && left.length <= 2) out.push(`Mastery of ${z.name} needs ${left.map(m => m.name.toLowerCase()).join(" and ")} (Map tab).`); }
   return out.length ? out : ["Keep fighting here."];
 }
 function planCard() {
