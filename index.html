@@ -542,6 +542,90 @@ const ZONES = [
 ];
 const MAX_LEVEL = 40;
 
+// Each race hears the campaign from its own side. Kill targets and counts stay the same; only the voices change.
+// Terran heroes get the base text above (Raynor, Kerrigan, Valerian...). Protoss follow Tassadar, Fenix and Artanis;
+// Zerg serve the Overmind, then Kerrigan's rebellion.
+const STORY = {
+  marsara: {
+    protoss: { giver: "Executor Tassadar", quests: [
+      { t: "A brood takes root", d: "The Swarm has landed on this terran world. Burn the zerglings before the Conclave orders the whole surface purified." },
+      { t: "Frightened guns", d: "Terran raiders fire on anything that moves, our observers included. Discourage them." },
+      { t: "Mercy, this once", d: "Tassadar has chosen to spare the colonists. Hold the ground while their dropships lift." } ] },
+    zerg: { giver: "The Overmind", quests: [
+      { t: "No rivals", d: "Feral zerglings of a lesser brood squabble over Mar Sara. The Swarm tolerates no rivals. Consume them." },
+      { t: "Scattered prey", d: "Terran raiders scatter across the colony like startled scantids. Hunt them." },
+      { t: "The dropships leave", d: "The terrans flee. Those who linger feed the brood." } ] } },
+  tarsonis: {
+    protoss: { giver: "Praetor Fenix", quests: [
+      { t: "Burning by their own hand", d: "The terrans lit this fire themselves and their marines shoot at us for it. Clear the plaza." },
+      { t: "Walkers in the streets", d: "Goliath walkers hold the evacuation routes. Our scouts need them gone." },
+      { t: "The innocents", d: "The Swarm pours from the psi emitters. Whatever the terrans have done, the people here deserve better than this." } ] },
+    zerg: { giver: "Cerebrate Daggoth", quests: [
+      { t: "A city already lost", d: "Confederate marines defend a capital that has already fallen. Break them." },
+      { t: "Crack the shells", d: "Goliaths stalk the avenues. Their armor is thick; your hunger is thicker." },
+      { t: "Our feeding ground", d: "Hydralisks of another brood feast where ours should. Drive them off." } ] } },
+  char: {
+    protoss: { giver: "Prelate Zeratul", quests: [
+      { t: "Grant them release", d: "Infested terrans shamble toward our lines. End them before they reach us." },
+      { t: "Spines underground", d: "Lurkers lie burrowed along the ridge. Even the Nerazim cannot hide from spines they cannot see. Flush them out." },
+      { t: "The cerebrate's chamber", d: "Zeratul will strike the cerebrate himself. Clear its hive of everything that moves." } ] },
+    zerg: { giver: "Kerrigan, Queen of Blades", quests: [
+      { t: "Crude work", d: "The infested terrans are Zasz's crude work. Unmake them." },
+      { t: "Garm Brood", d: "Lurkers of the Garm Brood burrow along the ridge. Flush them." },
+      { t: "A cerebrate's plots", d: "Zasz plots against me with the other cerebrates. Clear his hive. I will deal with him." } ],
+      boss: "A cerebrate loyal to the Overmind, not to Kerrigan. Break its brood; the Dark Templar's blade will do the rest." } },
+  aiur: {
+    protoss: { giver: "Tassadar, the Heretic", quests: [
+      { t: "Branded", d: "The Conclave has named us traitors for standing with the Nerazim. Our own zealots attack. Do not let them stop us." },
+      { t: "Brothers at Antioch", d: "Dragoons bar the way to Antioch. Their pilots were our brothers once. End it quickly." },
+      { t: "The Khala's heart", d: "Mutalisk flocks shred the temple districts. Clear the skies over the heart of the Khala." } ] },
+    zerg: { giver: "Kerrigan, Queen of Blades", quests: [
+      { t: "A dying order", d: "The Conclave's zealots defend an order that is already dead. Tear through them." },
+      { t: "Thick shells", d: "Dragoons guard Antioch. Peel them open." },
+      { t: "The Swarm answers to me", d: "Mutalisks of the Overmind's broods claim these skies. The Swarm will answer to me alone." } ] } },
+  shakuras: {
+    protoss: { giver: "Matriarch Raszagal", quests: [
+      { t: "Shadows in the sand", d: "Nerazim who defied the Matriarch raid the refugee camps. Bring them before her." },
+      { t: "Broken fusions", d: "Archons merge wrongly in the temple's shadow. Put the broken ones to rest." },
+      { t: "The crystals", d: "Hold the Xel'Naga temple while Artanis and Zeratul align the crystals." } ] },
+    zerg: { giver: "Kerrigan, Queen of Blades", quests: [
+      { t: "No fear of shadows", d: "Renegade Nerazim prowl the dunes. Hunt them. Their shadows hold no fear for the Swarm." },
+      { t: "Psionic residue", d: "Corrupted archons stir near the temple. What is left of them interests me." },
+      { t: "Raszagal's secrets", d: "Hold the temple until the Matriarch's secrets are ours." } ] } },
+  korhal: {
+    protoss: { giver: "Hierarch Artanis", quests: [
+      { t: "No parley", d: "Mengsk's marauders hold the outer ring of Augustgrad and will not treat with us. Push through." },
+      { t: "Silence the siege", d: "Siege tanks shell the terran rebels we have sworn to aid. Silence them." },
+      { t: "An alliance worth keeping", d: "Valerian's dropships need a landing zone near the palace. This alliance will matter in the Void." } ] },
+    zerg: { giver: "Kerrigan, Queen of Blades", quests: [
+      { t: "Peel them away", d: "Mengsk hides behind his marauders. Peel them away." },
+      { t: "Flatten the walls", d: "Siege tanks hold Augustgrad's walls. Flatten them." },
+      { t: "A debt", d: "Clear the approach to the palace. Mengsk owes me a debt from Tarsonis." } ],
+      boss: "The man who left Kerrigan to the Swarm on Tarsonis. She has waited a long time for this." } },
+  ulnar: {
+    protoss: { giver: "Zeratul", quests: [
+      { t: "Stolen essence", d: "The Moebius Foundation grows hybrids from stolen Protoss essence. Shut their harvesters down." },
+      { t: "Before they taste the Khala", d: "Hybrid reavers wake from stasis. Destroy them." },
+      { t: "The prophecy", d: "Zeratul seeks the last words of the Xel'Naga. Clear the vault's approach." } ] },
+    zerg: { giver: "Broodmother Zagara", quests: [
+      { t: "Take it back", d: "Moebius operatives harvest hybrid flesh grown from our essence. Take it back." },
+      { t: "Nothing we cannot eat", d: "Hybrid reavers break from stasis. The Swarm fears nothing it can eat." },
+      { t: "Something older", d: "Something older wakes beneath the vault. Clear the way for the Queen." } ] } },
+  void: {
+    protoss: { giver: "Hierarch Artanis", quests: [
+      { t: "The shapes of our dead", d: "Amon's shades wear the faces of fallen templar. Drive them back." },
+      { t: "Cut him loose", d: "Void thrashers anchor Amon to this place. Cut them loose." },
+      { t: "All of us, at last", d: "Templar, Nerazim, Purifiers and Tal'darim stand together. Clear the path to Amon." } ] },
+    zerg: { giver: "Kerrigan", quests: [
+      { t: "Mimics", d: "Amon's shades mimic our strains. Shred them." },
+      { t: "Tear him loose", d: "Void thrashers anchor the dark god here. Tear them loose." },
+      { t: "Once, together", d: "The Swarm, the Khala's children and the terrans stand together this once. Clear the path to Amon." } ] } },
+};
+const storyOf = (s, z) => (STORY[z.id] && STORY[z.id][s.race]) || null;
+const giverOf = (s, z) => (storyOf(s, z) || z).giver;
+const questText = (s, z, i) => { const st = storyOf(s, z); return st && st.quests[i] ? { ...z.quests[i], ...st.quests[i] } : z.quests[i]; };
+const bossLine = (s, z) => { const st = storyOf(s, z); return (st && st.boss) || z.boss.line; };
+
 // Abilities 4-6 per class unlock at levels 10 / 20 / 30. Three can be slotted at once.
 const EXTRA_ABILITIES = {
   marine: [
@@ -1106,8 +1190,9 @@ function killFoe(s, d) {
       q.i++; q.c = 0;
       const rx = xpNext(s.level) * 0.35, rm = 20 + z.max * 12, rg = 5 + z.max * 2;
       s.minerals += rm; s.gas += rg;
-      log(s, "w", `Quest complete: ${qd.t}. +${fmt(rx)} xp, +${fmt(rm)} minerals, +${rg} gas.`);
-      decide(s, "Quest", `Turned in "${qd.t}" to ${z.giver}.`);
+      const qt = questText(s, z, q.i - 1);
+      log(s, "w", `Quest complete: ${qt.t}. +${fmt(rx)} xp, +${fmt(rm)} minerals, +${rg} gas.`);
+      decide(s, "Quest", `Turned in "${qt.t}" to ${giverOf(s, z)}.`);
       fx(s, "quest");
       gainXp(s, rx);
       if (q.i >= z.quests.length) log(s, "w", `${z.boss.name} can now be challenged.`);
@@ -1802,7 +1887,7 @@ $("startBtn").addEventListener("click", () => {
   const name = $("heroName").value.trim() || ({ terran: "Tychus", protoss: "Talandar", zerg: "Niadra" }[pickState.race]);
   S = newGame(name, pickState.race, pickState.cls);
   const z = ZONES[0];
-  log(S, "w", `${z.giver}: "Glad you made it. ${z.quests[0].d}"`);
+  log(S, "w", `${giverOf(S, z)}: "${questText(S, z, 0).d}"`);
   decide(S, "Start", "Autopilot is on. It will fight, rest, equip gear and spend points for you. Switch it off at the top to play manually.");
   save(); startGame();
 });
@@ -1879,15 +1964,16 @@ function renderPane() {
     });
     if (S.contracts.length < 3) h += `<div class="contract" style="opacity:.6;border-left-color:var(--line)"><div class="row"><b>Next contract</b><span class="num">in ${dur(Math.max(0, (S.contractT || 0) - S.stats.played))}</span></div></div>`;
     const q = questState(S, S.zone);
-    h += `<h3 class="label" style="margin-top:6px">Zone quests</h3><div class="note">Quest giver: <span class="giver">${z.giver}</span></div>`;
+    h += `<h3 class="label" style="margin-top:6px">Zone quests</h3><div class="note">Quest giver: <span class="giver">${giverOf(S, z)}</span></div>`;
     z.quests.forEach((qd, i) => {
       const state = i < q.i ? "done" : i === q.i ? "cur" : "locked";
       const prog = i < q.i ? qd.n : i === q.i ? q.c : 0;
       const target = qd.foe === null ? "any enemy" : z.foes[qd.foe].name;
-      h += `<div class="card ${state}"><div class="row"><h3>${qd.t}</h3><span class="num">${prog}/${qd.n}</span></div><p>${qd.d}</p><p>Defeat ${qd.n} × ${target}.</p></div>`;
+      const qt = questText(S, z, i);
+      h += `<div class="card ${state}"><div class="row"><h3>${qt.t}</h3><span class="num">${prog}/${qd.n}</span></div><p>${qt.d}</p><p>Defeat ${qd.n} × ${target}.</p></div>`;
     });
     const ready = q.i >= z.quests.length;
-    h += `<div class="card ${S.bosses[S.zone] ? "done" : ready ? "cur" : "locked"}"><div class="row"><h3>Boss · ${z.boss.name}</h3><span class="label">${S.bosses[S.zone] ? "Defeated" : ready ? "Ready" : "Locked"}</span></div><p>${z.boss.line}</p>${ready && !S.bosses[S.zone] ? `<p>Your estimated margin: <span class="num">${bossOdds(S, derive(S)).toFixed(2)}x</span>. Autopilot engages at ${S.pol.bossMargin}x.</p>` : ""}</div>`;
+    h += `<div class="card ${S.bosses[S.zone] ? "done" : ready ? "cur" : "locked"}"><div class="row"><h3>Boss · ${z.boss.name}</h3><span class="label">${S.bosses[S.zone] ? "Defeated" : ready ? "Ready" : "Locked"}</span></div><p>${bossLine(S, z)}</p>${ready && !S.bosses[S.zone] ? `<p>Your estimated margin: <span class="num">${bossOdds(S, derive(S)).toFixed(2)}x</span>. Autopilot engages at ${S.pol.bossMargin}x.</p>` : ""}</div>`;
     if (S.bosses[ZONES.length - 1]) h += ascendCard();
   }
   if (UI.tab === "map") {
