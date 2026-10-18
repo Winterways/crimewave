@@ -160,6 +160,10 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
 - **Level-up**: a full-screen flash and banner on the scene with the actual stat deltas (+damage, +health, +1 talent
   point), energy refilled, and a 20 s **Surge** (+30% damage and attack speed, gold particles) so the next fights are
   visibly easier, not just a number ticking over. The XP bar glows past 85%.
+- **Level-up shockwave**: the surge also opens the next fight with a shockwave that takes 35% of an ordinary enemy's
+  health (12% of a boss, never a kill) and staggers it for 1.5 s, with a bolt, a burst and a "Shockwave" tag over the
+  enemy. It makes the first fight after a level-up visibly lopsided, which is the point, and costs nothing in pacing
+  (level 15 still lands at 43–71 minutes across the nine classes).
 - **Ranks**: a title every 5 levels per race (Recruit → General, Initiate → Hierarch, Larva → Swarm Prime) shown under the
   hero's name; a promotion banner and a free rare+ supply crate.
 - **Kill streaks**: +1% xp and minerals per kill in a row (cap +30%), shown next to the mode line from 3 kills. Resting,
