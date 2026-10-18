@@ -47,8 +47,8 @@ level 20 without; higher dungeons were already cleared at both settings. The aut
 practical effect is that it takes parties in two to three levels earlier. Each use floats the ability name over the
 companion in the scene; the Dungeons tab and Codex list the signatures.
 
-The Dungeons tab forecasts each open instance within eight levels of the hero: "Rehearsal: cleared 2 of 3 with Fenix and
-Tassadar", from the same three rehearsals the autopilot uses before entering, so a manual player sees the same odds the
+The Dungeons tab forecasts each open instance within eight levels of the hero: "Rehearsal: cleared 4 of 5 with Fenix and
+Tassadar", from the same five rehearsals the autopilot uses before entering (it goes in at four), so a manual player sees the same odds the
 autopilot acts on. Forecasts are computed one at a time off the render path (`forecastPump`) and cached per dungeon,
 party, level and power, so the tab never stalls; a party of two damage dealers gets a warning that it rarely survives.
 
@@ -105,8 +105,10 @@ with the current policies, then shows a "While you were away" summary.
 
 ## Balance
 Foes are tuned against a reference hero of the same level, so an even fight is ~7s and costs ~25%
-health before abilities. The first levels are deliberately softer: enemies below level 5 have 78–100% of their
-nominal stats, the xp curve ramps from 28% of its full value at level 1 to 100% at level 12, and the second and
+health before abilities. The first levels are deliberately softer: enemies below level 8 have 72–100% of their
+nominal stats (it was 78–100% below level 5, which still left squishy classes dying two or three times in the first
+ten minutes to a level-5 Outlaw Raider; now it is under one death in the first 90 minutes for most classes), enemies never roll a level above the hero's before level 6, the flee
+rule can fire every 40 s instead of once a minute, the xp curve ramps from 28% of its full value at level 1 to 100% at level 12, and the second and
 sixth kills always drop an item. A new hero now reaches level 2 in 30–60 s, level 5 in 4–10 min and the first boss
 in 10–28 min (it was 3–4 min to level 2 and 25–40 min to the first boss); the time to Amon is unchanged. Headless sims of all 9 classes on full autopilot reach Amon in roughly
 4–7 hours of play time (see Feel below), with tankier/faster classes at the quick end. Dungeons usually open up around
