@@ -120,6 +120,10 @@ level-up fireworks and screen shake on big hits. Inline SVG icons mark gear slot
 Sound effects are synthesized with Web Audio (noise bursts and oscillators): weapon fire per class, hits, kills,
 abilities, heals, loot, level-ups and quest turn-ins. Sound starts after the first click and can be toggled at the
 top; the choice is remembered. Offline catch-up and the autopilot's rehearsals never trigger effects.
+Each zone also has a looping ambience bed, synthesized from two or three detuned drones and a filtered noise layer
+whose filter breathes on a slow LFO: wind on Mar Sara, a city hum on Tarsonis, a volcanic rumble on Char, a bright
+chord on Aiur, a beating dissonance in the Void. The bed crossfades when the hero changes zone, goes silent while the
+tab is hidden or sound is off, and has its own "Ambience" toggle next to the sound button, also remembered.
 
 ## Feel: the reward loop
 Austin asked for leveling to feel powerful and for the game to keep pulling you back. What that pass added:
