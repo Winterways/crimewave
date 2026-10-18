@@ -1288,7 +1288,8 @@ function gainXp(s, xp) {
     // a surge of power for the next 20 seconds, so a level-up is felt in the fight, not only read
     s.buffs = s.buffs.filter(b => b.id !== "surge");
     s.buffs.push({ id: "surge", t: 20, buff: { atk: 0.3, aspd: 0.3 } });
-    const gains = [`+${fmt(after.atk - before.atk)} damage`, `+${fmt(after.hp - before.hp)} health`, "+1 talent point"];
+    const small = v => v >= 10 ? fmt(v) : v.toFixed(1); // a Zergling gains 1.7 damage a level; "+0 damage" would be a lie
+    const gains = [`+${small(after.atk - before.atk)} damage`, `+${small(after.hp - before.hp)} health`, "+1 talent point"];
     log(s, "w", `Level up! You are now level ${s.level}. ${gains.join(", ")}. Power surges for 20s.`);
     fx(s, "level");
     fx(s, "banner", { lines: [`LEVEL ${s.level}`, gains.join(" · ")], col: "#ffd84a", snd: null });
@@ -1528,7 +1529,7 @@ function autopilot(s, d) {
         s.gear[it.slot] = it; s.bag.splice(s.bag.indexOf(it), 1);
         if (old) s.bag.push(old);
         if (s === S) UI.flashSlot = it.slot;
-        decide(s, "Gear", `Equipped ${it.name} over ${old ? old.name : "an empty slot"} (+${(g * 100).toFixed(1)}% power).`);
+        decide(s, "Gear", `Equipped ${it.name} (ilvl ${it.ilvl}) over ${old ? `${old.name} (ilvl ${old.ilvl})` : "an empty slot"} (+${(g * 100).toFixed(1)}% power).`);
         bump();
       }
     }
@@ -1573,7 +1574,7 @@ function autopilot(s, d) {
   }
   // 4b. ability loadout
   if (P.loadout) {
-    const best = bestLoadout(s);
+    const best = bestLoadout(s).slice().sort((a, b) => a - b);
     if (best.join() !== [...s.loadout].sort((a, b) => a - b).join()) {
       const abs = CLASSES[s.cls].abilities;
       const added = best.filter(i => !s.loadout.includes(i)).map(i => abs[i].name);
@@ -1838,7 +1839,9 @@ function buyCrate(s, byAI) {
   if (s.minerals < c) return false;
   s.minerals -= c;
   const it = makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, Math.max(s.level, zoneOf(s).min)), Math.max(1, rollRarity(0.6)));
-  if (byAI && (it.rarity >= 2 || itemGain(s, it) > 0)) decide(s, "Supply", `Bought a supply crate for ${fmt(c)} minerals: ${it.name}${itemGain(s, it) > 0 ? " (an upgrade)" : ""}.`);
+  // only crates that pay off reach the decisions feed; the rest stay in the log so Boss and Travel entries are not pushed out
+  if (byAI && itemGain(s, it) > 0) decide(s, "Supply", `Bought a supply crate for ${fmt(c)} minerals: ${it.name} (an upgrade).`);
+  else if (byAI) log(s, "k", `Autopilot: bought a supply crate for ${fmt(c)} minerals: ${it.name}.`);
   gainItem(s, it);
   return true;
 }
