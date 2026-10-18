@@ -182,6 +182,15 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   contracts); the first version paid a quarter level per contract with instant refills and cut that to 2–3 h, which is
   why the refill timer exists.
 
+## Daily check-in
+The first session of each local day pays a supply crate (rare or better at the hero's level, rolled higher from a
+7-day streak) and an hour of Rested (+15% xp, shown next to the hero's buffs and ticking down only while playing).
+Consecutive days build a streak that the Codex record and three feats (3, 7 and 30 days) track; a missed day resets
+it to one but keeps the best. The check runs when a hero loads, when you switch heroes, on a new hero (which only
+starts the count, so a level-1 hero does not get a rare item) and once a minute for midnight passing while the tab is
+open. The streak survives ascension. This is the return-visit hook: the offline summary says what happened, the
+check-in banner says why today is worth staying for.
+
 ## Retreat and return
 - **Flee**: a policy (default on, below 20% health) that breaks off a losing fight against an ordinary enemy, once a
   minute, then rests; never against bosses or inside instances, where a wipe should stay a wipe. A Flee button appears

@@ -892,6 +892,9 @@ const FEATS = [
   { id: "flee10", name: "Live to Fight", desc: "Escape 10 losing fights", valor: 5, test: s => (s.stats.flees || 0) >= 10 },
   { id: "contract10", name: "Contractor", desc: "Complete 10 contracts", valor: 10, test: s => (s.stats.contracts || 0) >= 10 },
   { id: "contract50", name: "Guild Favourite", desc: "Complete 50 contracts", valor: 25, crate: true, test: s => (s.stats.contracts || 0) >= 50 },
+  { id: "daily3", name: "Regular", desc: "Check in 3 days running", valor: 5, test: s => ((s.daily || {}).best || 0) >= 3 },
+  { id: "daily7", name: "Habit", desc: "Check in 7 days running", valor: 15, crate: true, test: s => ((s.daily || {}).best || 0) >= 7 },
+  { id: "daily30", name: "Sector Veteran", desc: "Check in 30 days running", valor: 40, crate: true, test: s => ((s.daily || {}).best || 0) >= 30 },
 ];
 
 // Contracts: three rotating short goals, replaced as they complete. Rewards scale with the zone.
@@ -1018,7 +1021,7 @@ function newGame(name, race, cls, carry) {
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
     streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
-    event: null, nextEvent: 600 + rnd() * 300, tips: {},
+    event: null, nextEvent: 600 + rnd() * 300, tips: {}, daily: carry?.daily || { last: "", streak: 0, best: 0 }, rested: 0,
     id: Date.now().toString(36) + Math.floor(rnd() * 1e6).toString(36),
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0,
     deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, foeKills: carry.stats.foeKills, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
@@ -1156,6 +1159,7 @@ function step(s, dt) {
   eventTick(s, dt);
   s.sinceHit += dt;
   if (s.stim > 0) { s.stim -= dt; if (s.stim <= 0) { s.stim = 0; log(s, "k", `${PROF_NAMES[s.race].stim} wore off.`); bump(); } }
+  if (s.rested > 0) { s.rested -= dt; if (s.rested <= 0) { s.rested = 0; log(s, "k", "Rested wore off."); bump(); } }
   s.hp = Math.min(s.hp, d.hp);
   s.en = Math.min(100, s.en + d.regen * dt);
   for (const k in s.cds) { s.cds[k] -= dt; if (s.cds[k] <= 0) delete s.cds[k]; }
@@ -1374,6 +1378,7 @@ function killFoe(s, d) {
 
 function gainXp(s, xp) {
   if (s.level >= MAX_LEVEL) return;
+  if (s.rested > 0) xp *= 1 + RESTED_XP;
   s.xp += xp;
   while (s.level < MAX_LEVEL && s.xp >= xpNext(s.level)) {
     const before = derive(s), oldRank = rankIdx(s.level);
@@ -1961,7 +1966,7 @@ function ascend() {
   if (!S.bosses[ZONES.length - 1]) return;
   if (S.run) leaveRun(S);
   const gain = ascendGain(S);
-  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, feats: S.feats, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
+  const carry = { daily: S.daily, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, feats: S.feats, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
   S = newGame(S.name, S.race, S.cls, carry);
   log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience) and a perk point.`);
   fx(S, "banner", { lines: [`ASCENSION ${S.ascensions}`, `+${gain} essence · 1 perk point`], col: "#c06cff", snd: "promote" });
@@ -1970,6 +1975,28 @@ function ascend() {
 }
 
 /* ---------- offline / catch-up ---------- */
+/* ---------- daily check-in ----------
+   The first session of each local day pays a supply crate and an hour of Rested (+15% xp). Consecutive days build a
+   streak that the Codex and three feats track; a missed day resets it to one. Brand-new heroes start the count
+   without a reward, since a rare item at level 1 would skip the early game. */
+const RESTED_SECS = 3600, RESTED_XP = 0.15;
+const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function dailyCheck(s) {
+  if (!s || s !== S || SIMULATING) return;
+  const today = dayKey(), y = new Date(); y.setDate(y.getDate() - 1);
+  const d = s.daily || (s.daily = { last: "", streak: 0, best: 0 });
+  if (d.last === today) return;
+  const fresh = s.stats.kills < 1 && !d.last;
+  d.streak = d.last === dayKey(y) ? d.streak + 1 : 1; d.best = Math.max(d.best || 0, d.streak); d.last = today;
+  if (fresh) return;
+  const crate = makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, Math.max(s.level, zoneOf(s).min)), Math.max(2, rollRarity(d.streak >= 7 ? 1.5 : 1)));
+  gainItem(s, crate); s.rested = RESTED_SECS;
+  log(s, "w", `Day ${d.streak} check-in: ${crate.name} and an hour of Rested (+${Math.round(RESTED_XP * 100)}% xp).`);
+  fx(s, "banner", { lines: [`DAY ${d.streak} CHECK-IN`, `Supply crate · +${Math.round(RESTED_XP * 100)}% xp for the next hour${d.streak >= 2 ? ` · ${d.streak}-day streak` : ""}`], col: "#7cf08a", snd: "promote", delay: 1.5 });
+  checkFeats(s); bump();
+}
+setInterval(() => { try { dailyCheck(S); } catch (e) {} }, 60000); // catches midnight passing while the tab is open
+
 function simulate(s, seconds) {
   const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0, events: s.stats.events || 0 };
   const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
@@ -2035,6 +2062,7 @@ function switchHero(id) {
   $("modal").hidden = true;
   startGame(); save();
   if (away > 60) { const r = simulate(S, Math.min(away, OFFLINE_CAP)); bump(); showAway(r); save(); }
+  dailyCheck(S);
 }
 function deleteHero(id) { try { localStorage.removeItem(heroKey(id)); } catch (e) {} openRoster(); }
 function openRoster() {
@@ -2086,6 +2114,8 @@ function hydrate(o) {
   o.id = typeof o.id === "string" && o.id ? o.id : Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
   if (!o.tips) o.tips = (o.stats.totalPlayed || 0) > 3600 ? Object.fromEntries(TIPS.map(t => [t.id, 1])) : {}; // veterans skip the tour
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
+  o.daily = o.daily && typeof o.daily === "object" ? { last: typeof o.daily.last === "string" ? o.daily.last : "", streak: Math.round(num(o.daily.streak, 0, 0, 100000)), best: Math.round(num(o.daily.best, 0, 0, 100000)) } : { last: "", streak: 0, best: 0 };
+  o.rested = num(o.rested, 0, 0, RESTED_SECS);
   { const pl = {}; if (o.plan && typeof o.plan === "object") for (const [k, v] of Object.entries(o.plan)) { const z = +k; if (ZONES[z] && v && typeof v === "object") pl[z] = { hold: num(v.hold, 0, 0, MAX_LEVEL), mine: Math.round(num(v.mine, 0, 0, PLAN_MINE.length - 1)) }; } o.plan = pl; }
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5); o.pol.fleeAt = num(o.pol.fleeAt, 20, 5, 60);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -2143,7 +2173,7 @@ $("startBtn").addEventListener("click", () => {
   const z = ZONES[0];
   log(S, "w", `${giverOf(S, z)}: "${questText(S, z, 0).d}"`);
   decide(S, "Start", "Autopilot is on. It will fight, rest, equip gear and spend points for you. Switch it off at the top to play manually.");
-  save(); startGame();
+  dailyCheck(S); save(); startGame();
 });
 $("importBtn").addEventListener("click", () => openImport());
 
@@ -2348,7 +2378,8 @@ function renderPane() {
       <div><span class="label">Bounties</span><span class="num">${S.stats.bounties || 0}</span></div><div><span class="label">Contracts</span><span class="num">${S.stats.contracts || 0}</span></div>
       <div><span class="label">Events</span><span class="num">${S.stats.events || 0}</span></div><div><span class="label">Best streak</span><span class="num">${S.bestStreak || 0}</span></div>
       <div><span class="label">Minerals mined</span><span class="num">${fmt(S.stats.mined || 0)}</span></div><div><span class="label">Items crafted</span><span class="num">${S.stats.crafted || 0}</span></div>
-      <div><span class="label">Escapes</span><span class="num">${S.stats.flees || 0}</span></div><div><span class="label">Ascensions</span><span class="num">${S.ascensions}</span></div></div></div>`;
+      <div><span class="label">Escapes</span><span class="num">${S.stats.flees || 0}</span></div><div><span class="label">Ascensions</span><span class="num">${S.ascensions}</span></div>
+      <div><span class="label">Check-in streak</span><span class="num">${(S.daily || {}).streak || 0}</span></div><div><span class="label">Best streak of days</span><span class="num">${(S.daily || {}).best || 0}</span></div></div></div>`;
     h += `<div class="card"><h3>Save data</h3><p>Progress saves in this browser every few seconds. Export a save code to move it to another device.</p>
       <div class="btns" style="justify-content:start"><button class="btn small" data-act="export">Export save</button><button class="btn small" data-act="import">Import save</button><button class="btn small ghost" data-act="reset">Roster</button></div></div>`;
     h += `<p class="note">Fan-made, non-commercial prototype. StarCraft and its characters are trademarks of Blizzard Entertainment.</p>`;
@@ -2411,7 +2442,7 @@ function renderLive() {
   $("hEnBar").style.width = S.en + "%";
   const mode = { fight: "In combat", seek: "Searching", rest: "Resting", idle: "Standing by", dead: "Down", mine: "Mining" }[S.mode];
   $("hState").textContent = mode;
-  $("aHeroMeta").textContent = `Lv ${S.level} ${CLASSES[S.cls].name}${S.stim > 0 ? " · Stimmed" : ""}${S.buffs.length ? " · " + S.buffs.map(b => b.id === "surge" ? "Surge" : b.id === "ambush" ? "Ambushed" : CLASSES[S.cls].abilities.find(a => a.id === b.id)?.name).filter(Boolean).join(", ") : ""}`;
+  $("aHeroMeta").textContent = `Lv ${S.level} ${CLASSES[S.cls].name}${S.stim > 0 ? " · Stimmed" : ""}${S.buffs.length ? " · " + S.buffs.map(b => b.id === "surge" ? "Surge" : b.id === "ambush" ? "Ambushed" : CLASSES[S.cls].abilities.find(a => a.id === b.id)?.name).filter(Boolean).join(", ") : ""}${S.rested > 0 ? ` · Rested ${dur(S.rested)}` : ""}`;
   const fe = $("aFoe");
   fe.classList.toggle("boss", !!(f && (f.boss || f.elite)));
   if (f) {
@@ -3263,6 +3294,7 @@ function start(data) {
     const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
     startGame();
     if (away > 60 && !(data && data.S)) { const r = simulate(S, Math.min(away, OFFLINE_CAP)); bump(); showAway(r); save(); }
+    dailyCheck(S);
   } else {
     $("create").hidden = false; $("backToRoster").hidden = parkedHeroes().length === 0; renderCreate();
   }
