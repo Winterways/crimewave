@@ -183,6 +183,8 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   with a gold chevron): triple xp and minerals, bonus gas and a guaranteed rare+ drop.
 - **Feats**: 26 milestones (kills, levels, bosses, instances, streaks, bounties, crafting, mining, bonds, ascension) with
   Valor rewards and supply crates for the big ones; a Feats tab and unlock banners. Feats carry through ascension.
+  Countable feats show a progress line and bar ("640 / 1000"), and the Feats tab sorts finished feats first and then the
+  closest to finished, so the top of the list is always something almost done.
 - **Boss moments**: challenging a zone boss drops a red banner with its name and title and swells the zone ambience
   (louder bed with a 1.8 Hz pulse until the fight ends); the kill puts "MAR SARA CLEARED · Tarsonis is open" at the
   front of the banner queue ahead of the level-ups and feats it triggers; Amon gets its own banner, and instance clears
