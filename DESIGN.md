@@ -195,6 +195,14 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   and after) and where Head Start would begin, a once-only tip and a feed line say the hero is holding, the away summary
   says it too, and kill lines drop the useless "+xp" at max level. Ascension also carries the dismissed tips over, so a
   veteran no longer sees the first-hour tour again on the second cycle.
+- **Cycles**: six-cycle sims showed the second run to Amon taking 0.9 h and the fifth 0.5 h, with zero deaths, because
+  essence (+4% each, about 46 per ascension) grows linearly and nothing pushed back. Each ascension now starts a harder
+  cycle: enemies, instance enemies and bosses have +100% health and damage per ascension (`CYCLE_SCALE`), and pay +25%
+  minerals and gas per ascension. Sims with 0.35, 0.7 and 1.0: only 1.0 moved the curve, to 1.2–1.4 h for the second
+  cycle settling at about 0.8 h, still with zero deaths across Marine, Ghost and Zergling. The boss-margin estimate and
+  rehearsals use the same scaled stats, so the autopilot's judgement stays honest. The Ascension card, the ascend log,
+  the Codex record and the essence pill's tooltip all say which cycle you are in and what it adds. Feats at 3 and 10
+  ascensions give the long game a ladder.
 - Pacing check: 10 h autopilot sims complete 74–82 contracts and Amon still falls in 4.0–5.3 h (unchanged from before
   contracts); the first version paid a quarter level per contract with instant refills and cut that to 2–3 h, which is
   why the refill timer exists.
