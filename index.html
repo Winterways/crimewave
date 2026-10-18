@@ -2502,7 +2502,8 @@ function renderStatic() {
   renderPane();
 }
 function renderTabs() {
-  const dots = { crafting: canCraft(S) && !(S.pol.autopilot && S.pol.craft), talents: S.talPts > 0 || S.perkPts > 0 || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
+  const qz = questState(S, S.zone);
+  const dots = { quests: !S.run && !S.bosses[S.zone] && qz.i >= zoneOf(S).quests.length && !(S.pol.autopilot && S.pol.boss), dungeons: !S.run && !(S.pol.autopilot && S.pol.dungeons) && DUNGEONS.some((dg, i) => !dungeonReady(S, i) && dLevel(dg) <= S.level), crafting: canCraft(S) && !(S.pol.autopilot && S.pol.craft), talents: S.talPts > 0 || S.perkPts > 0 || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
   $("tabs").innerHTML = TABS.map(([k, n]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${UI.tab === k}">${n}${dots[k] ? '<span class="dot"></span>' : ""}</button>`).join("");
 }
 function renderPane() {
@@ -2573,7 +2574,8 @@ function renderPane() {
     }
   }
   if (UI.tab === "bag") {
-    h += `<div class="row"><span class="note">${S.bag.length}/24 items · Supply crate: ${fmt(crateCost(S))} minerals</span><button class="btn small" data-act="crate" ${S.minerals < crateCost(S) ? "disabled" : ""}>Buy crate</button></div>`;
+    const junk = S.bag.filter(it => itemGain(S, it) <= 0.001);
+    h += `<div class="row"><span class="note">${S.bag.length}/24 items · Supply crate: ${fmt(crateCost(S))} minerals</span><span class="btns"><button class="btn small ghost" data-act="sellall" ${junk.length ? "" : "disabled"} title="Sell every item that is not an upgrade">Sell ${junk.length} non-upgrade${junk.length === 1 ? "" : "s"}</button><button class="btn small" data-act="crate" ${S.minerals < crateCost(S) ? "disabled" : ""}>Buy crate</button></span></div>`;
     if (!S.bag.length) h += `<p class="note">No spare gear. Enemies drop items about one kill in six, and bosses always drop rare or better.</p>`;
     const sorted = [...S.bag].sort((a, b) => itemGain(S, b) - itemGain(S, a));
     for (const it of sorted) {
@@ -2854,6 +2856,7 @@ $("pane").addEventListener("click", e => {
   if (t.dataset.pol) { S.pol[t.dataset.pol] = !S.pol[t.dataset.pol]; bump(); }
   const act = t.dataset.act;
   if (act === "crate") buyCrate(S, false);
+  if (act === "sellall") { let min = 0, scrap = 0, n = 0; for (const it of S.bag.filter(x => itemGain(S, x) <= 0.001)) { const r = sellItem(S, it); S.bag.splice(S.bag.indexOf(it), 1); min += r.min; scrap += r.scrap; n++; } if (n) { toast(`Sold ${n} item${n === 1 ? "" : "s"}: +${fmt(min)} minerals, +${scrap} ${PROF_NAMES[S.race].scrap}.`); log(S, "k", `Sold ${n} spare item${n === 1 ? "" : "s"} for ${fmt(min)} minerals.`); bump(); } }
   if (act === "mine") { if (S.mode === "mine") { S.mode = S.pol.autopilot ? "seek" : "idle"; S.timer = .5; delete S.mineFor; bump(); } else startMining(S, S.pol.autopilot ? 60 : undefined); }
   if (act === "stim") useStim(S, false);
   if (act === "makekit") makeKit(S, false);
@@ -2998,14 +3001,22 @@ function confirmBox(title, body, label, fn) {
 }
 function openExport() {
   const code = exportSave();
-  modal(`<h2>Export save</h2><p class="note">Copy this code and paste it into Import on another device or browser.</p><textarea id="exportBox" readonly>${code}</textarea><div class="btns"><button class="btn" id="copyBtn">Copy</button><button class="btn primary" data-close>Done</button></div>`);
+  modal(`<h2>Export save</h2><p class="note">Copy this code and paste it into Import on another device or browser.</p><textarea id="exportBox" readonly>${code}</textarea><div class="btns"><button class="btn" id="dlBtn">Download file</button><button class="btn" id="copyBtn">Copy</button><button class="btn primary" data-close>Done</button></div>`);
+  $("dlBtn").onclick = () => {
+    const a = document.createElement("a"), d = new Date();
+    a.href = URL.createObjectURL(new Blob([code], { type: "text/plain" }));
+    a.download = `koprulu-idle-${S.name.replace(/[^\w-]+/g, "_")}-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.txt`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast("Save file downloaded.");
+  };
   $("copyBtn").onclick = () => {
     const box = $("exportBox");
     navigator.clipboard?.writeText(code).then(() => toast("Save code copied."), () => { box.select(); toast("Select all and copy the code."); }) ?? (box.select(), toast("Select all and copy the code."));
   };
 }
 function openImport() {
-  modal(`<h2>Import save</h2><p class="note">Paste a save code. This replaces the hero in this browser.</p><textarea id="importBox" placeholder="Paste save code"></textarea><div class="btns"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="importGo">Import</button></div>`);
+  modal(`<h2>Import save</h2><p class="note">Paste a save code. This replaces the hero in this browser.</p><textarea id="importBox" placeholder="Paste save code"></textarea><div class="btns"><label class="btn">Open file<input type="file" id="importFile" accept=".txt,text/plain" hidden></label><button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="importGo">Import</button></div>`);
+  $("importFile").onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { $("importBox").value = t.trim(); toast(`Loaded ${f.name}. Press Import.`); }); };
   $("importGo").onclick = () => { if (importSave($("importBox").value)) { closeModal(); startGame(); toast("Save imported."); } else toast("That code is not a valid save."); };
 }
 function showAway(r) {
