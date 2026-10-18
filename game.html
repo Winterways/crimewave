@@ -359,6 +359,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
       <div class="actions">
         <button class="btn" id="engageBtn">Engage</button>
         <button class="btn" id="restBtn">Rest</button>
+        <button class="btn" id="fleeBtn" hidden>Flee</button>
         <button class="btn" id="mineBtn">Mine</button>
         <button class="btn" id="bossBtn">Challenge boss</button>
         <button class="btn" id="leaveBtn" hidden>Leave instance</button>
@@ -702,6 +703,7 @@ const FEATS = [
   { id: "survivor", name: "Hard to Kill", desc: "Fall 10 times and keep going", valor: 5, test: s => s.stats.deaths >= 10 },
   { id: "marathon", name: "Marathon", desc: "10 hours played", valor: 15, test: s => (s.stats.totalPlayed || 0) >= 36000 },
   { id: "ascend", name: "Xel'Naga Touched", desc: "Ascend", valor: 30, crate: true, test: s => s.ascensions >= 1 },
+  { id: "flee10", name: "Live to Fight", desc: "Escape 10 losing fights", valor: 5, test: s => (s.stats.flees || 0) >= 10 },
   { id: "contract10", name: "Contractor", desc: "Complete 10 contracts", valor: 10, test: s => (s.stats.contracts || 0) >= 10 },
   { id: "contract50", name: "Guild Favourite", desc: "Complete 50 contracts", valor: 25, crate: true, test: s => (s.stats.contracts || 0) >= 50 },
 ];
@@ -737,6 +739,7 @@ const DEFAULT_POL = {
   equip: true, sell: 2, talents: true, upgrades: true, crates: true,
   advance: true, boss: true, bossMargin: 1.3, retreat: true, ascend: false,
   loadout: true, dungeons: true, mine: true, craft: true, stims: true, perks: true,
+  flee: true, fleeAt: 20,
 };
 
 /* ============================================================================
@@ -994,6 +997,7 @@ function fight(s, d, dt) {
     }
   }
   if (s.hp <= 0) heroDies(s);
+  else if (s.pol.autopilot && s.pol.flee && s.hp < d.hp * s.pol.fleeAt / 100 && s.hp / d.hp < f.hp / f.max && canFlee(s)) flee(s, true);
 }
 
 function useAbility(s, i, byAI) {
@@ -1160,6 +1164,19 @@ function gainItem(s, it) {
   bump();
 }
 
+// Break off a losing fight against an ordinary enemy. Not in instances or against bosses; one escape a minute.
+function canFlee(s) { return s.mode === "fight" && s.foe && !s.foe.boss && !s.run && (s.fleeCd || 0) <= s.stats.played; }
+function flee(s, byAI) {
+  if (!canFlee(s)) return false;
+  const f = s.foe;
+  s.fleeCd = s.stats.played + 60; s.stats.flees = (s.stats.flees || 0) + 1;
+  s.foe = null; s.mode = "rest"; s.restGoal = Math.max(s.pol.restTo, 70); s.timer = 1;
+  endStreak(s, "fled");
+  fx(s, "flee");
+  if (byAI) decide(s, "Flee", `Broke off from ${f.name} at ${Math.round(s.hp / derive(s).hp * 100)}% health: it had ${Math.round(f.hp / f.max * 100)}% left. Resting.`);
+  else log(s, "k", `You break off from ${f.name} and fall back.`);
+  bump(); return true;
+}
 function endStreak(s, why) {
   if ((s.streak || 0) >= 5) log(s, "k", `Kill streak of ${s.streak} ended (${why}).`);
   s.streak = 0;
@@ -1670,7 +1687,10 @@ function simulate(s, seconds) {
   const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
   SIMULATING = true;
   try { while (t < seconds) { step(s, Math.min(dt, seconds - t)); t += dt; } } finally { SIMULATING = false; FXQ.length = 0; }
-  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts };
+  // a supply drop waits after a long absence: one rare-or-better item for the hero's level
+  let drop = null;
+  if (seconds >= 4 * 3600) { drop = makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, s.level), Math.max(2, rollRarity(1.5))); gainItem(s, drop); log(s, "w", `A supply drop was waiting for you: ${drop.name}.`); }
+  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts, drop };
 }
 const OFFLINE_CAP = 8 * 3600;
 
@@ -1719,7 +1739,7 @@ function hydrate(o) {
   o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0;
   o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
   o.contracts = Array.isArray(o.contracts) ? o.contracts.filter(c => c && CONTRACT_KINDS[c.kind] && typeof c.n === "number" && c.reward && (c.zone === undefined || ZONES[c.zone])).slice(0, 3) : [];
-  o.skipAt = num(o.skipAt, 0, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
+  o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -1986,6 +2006,8 @@ function policiesPane() {
     ${tog("abilities", "Use abilities", "Fire abilities on cooldown, holding a defensive one in reserve when health drops.")}
     <div class="pol"><span><b>Rest below</b><small>Stop between fights when health falls under this, then rest up to the second value.</small></span>
       <span class="btns"><input type="number" id="polRestAt" data-polnum="restAt" min="0" max="95" value="${P.restAt}"><input type="number" id="polRestTo" data-polnum="restTo" min="30" max="100" value="${P.restTo}"></span></div>
+    <div class="pol"><span><b>Flee below</b><small>Break off a losing fight against an ordinary enemy under this much health (never bosses or instances; once a minute), then rest.</small></span>
+      <span class="btns"><button class="switch" role="switch" data-pol="flee" aria-checked="${!!P.flee}" aria-label="Flee"></button><input type="number" id="polFleeAt" data-polnum="fleeAt" min="5" max="60" value="${P.fleeAt}"></span></div>
     ${tog("equip", "Equip upgrades", "Swap in any item that raises your overall power.")}
     <div class="pol"><span><b>Auto-sell weaker gear</b><small>Sell items that are not upgrades, up to this rarity.</small></span>
       <select id="polSell" data-polsel="sell">${["Never", "Common", "Uncommon", "Rare", "Epic"].map((n, i) => `<option value="${i}" ${P.sell === i ? "selected" : ""}>${n}</option>`).join("")}</select></div>
@@ -2060,6 +2082,9 @@ function renderLive() {
   $("engageBtn").disabled = !(S.mode === "idle" || S.mode === "rest" || S.mode === "mine");
   $("mineBtn").disabled = !(S.mode === "idle" || S.mode === "seek" || S.mode === "rest") || !!S.run;
   $("restBtn").disabled = !(S.mode === "idle" || S.mode === "seek") || S.hp >= d.hp - 0.5;
+  $("fleeBtn").hidden = !(S.mode === "fight" && S.foe && !S.foe.boss && !S.run);
+  $("fleeBtn").disabled = !canFlee(S);
+  $("fleeBtn").textContent = canFlee(S) || S.mode !== "fight" ? "Flee" : `Flee (${Math.ceil((S.fleeCd || 0) - S.stats.played)}s)`;
   $("aParty").innerHTML = S.run ? S.run.party.map(m => { const c = COMPANIONS.find(x => x.id === m.id); return `<div class="member ${m.hp <= 0 ? "down" : ""}"><span>${esc(c.name)} <span class="role">${ROLE_LABEL[c.role]}</span></span><div class="bar" style="--c:var(--hp)"><i style="width:${clamp(m.hp / m.max * 100, 0, 100)}%"></i></div></div>`; }).join("") : "";
   $("leaveBtn").hidden = !S.run;
   $("leaveBtn").disabled = S.mode === "fight";
@@ -2086,6 +2111,7 @@ document.addEventListener("keydown", e => {
 });
 $("engageBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "rest" || S.mode === "mine") { S.mode = "seek"; S.timer = 0.5; delete S.mineFor; } });
 $("mineBtn").addEventListener("click", () => { if (startMining(S, S.pol.autopilot ? 60 : undefined)) log(S, "k", "Heading to the mineral field."); });
+$("fleeBtn").addEventListener("click", () => flee(S, false));
 $("restBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "seek") { S.mode = "rest"; endStreak(S, "rested"); log(S, "k", "You sit down to rest."); } });
 $("leaveBtn").addEventListener("click", () => leaveRun(S));
 $("soundBtn").addEventListener("click", () => setSound(!SND.on));
@@ -2185,6 +2211,7 @@ function showAway(r) {
       <div><span class="label">Feats</span><span class="num">+${r.feats}</span></div>
       <div><span class="label">Best streak</span><span class="num">${r.streak}</span></div>
     </div>
+    ${r.drop ? `<p class="note" style="color:${RCOL[r.drop.rarity]}">${icon(slotIcon(r.drop.slot, S.race), RCOL[r.drop.rarity], 14)} A supply drop was waiting: <b>${esc(r.drop.name)}</b> (${RARITY[r.drop.rarity].name} ${SLOT_LABEL[r.drop.slot].toLowerCase()}). Come back after 4 hours or more for another.</p>` : ""}
     ${r.zone ? `<p class="note">Now fighting in ${r.zone}.</p>` : ""}${r.deaths ? `<p class="note">Fell ${r.deaths} time${r.deaths > 1 ? "s" : ""} along the way.</p>` : ""}
     <div class="btns"><button class="btn primary" data-close>Continue</button></div>`);
 }
@@ -2532,6 +2559,7 @@ function processFx(L) {
       if (e.to === "hero") { R.hero.flash = 1; addText(heroX + (Math.random() - .5) * 20, heroY - 34 * L.k, fmt(e.dmg), "#ff7b6b", false); sfx("hurt"); }
       if (S.foe && S.foe.boss) R.shake = Math.max(R.shake, .4);
     } else if (e.type === "dodge") addText(heroX, heroY - 34 * L.k, "dodge", "#9ad9ff", false);
+    else if (e.type === "flee") { addText(heroX, heroY - 60 * L.k, "Fled!", "#e8b43c", true); burst(heroX, heroY + 30 * L.k, "#8a7a5a", 14, 4, 2); R.foe.x = 0; sfx("flee"); }
     else if (e.type === "ability") {
       const a = e.a, col = { dmg: "#ffd84a", dot: "#ff8a2a", buff: PAL[S.race].glow, shield: "#9ad9ff", heal: "#7cf08a" }[a.type];
       if (a.type === "heal") { burst(heroX, heroY + 20 * L.k, "#7cf08a", 18, 1.5, 3); sfx("heal"); }
@@ -2747,6 +2775,7 @@ const SFX = {
   die: () => tone({ type: "sawtooth", f: 220, f2: 45, dur: .9, vol: .1 }),
   click: () => tone({ type: "square", f: 900, dur: .03, vol: .04 }),
   promote: () => [392, 494, 587, 784, 988].forEach((f, i) => tone({ type: "triangle", f, dur: .3, vol: .12, delay: i * .1 })),
+  flee: () => { hiss({ filter: "lowpass", freq: 900, f2: 200, dur: .35, vol: .2 }); tone({ type: "triangle", f: 440, f2: 220, dur: .3, vol: .07 }); },
   contract: () => [784, 988, 1175].forEach((f, i) => tone({ type: "triangle", f, dur: .18, vol: .08, delay: i * .07 })),
   feat: () => { tone({ f: 988, dur: .15, vol: .08 }); tone({ f: 1319, dur: .3, vol: .08, delay: .12 }); },
   streak: () => [660, 880].forEach((f, i) => tone({ type: "square", f, dur: .1, vol: .05, delay: i * .08 })),
