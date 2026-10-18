@@ -117,6 +117,21 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
 - Balance: the streak and bounty bonuses speed a full-autopilot run up by roughly 15–20% (Amon now falls in ~4–7 h
   across the nine classes instead of 5–9 h), which felt like the right trade for the pacing.
 
+## Goals: contracts and ascension perks
+- **Contracts** (Quests tab): three rotating short goals drawn from ten kinds (destroy N enemies in this zone, hunt a
+  specific enemy, defeat a boss, clear an instance, reach a streak, mine minerals, bring down a bounty, find rare items,
+  earn xp, craft). Targets scale with level; rewards are minerals, gas, Valor, shards or a crate, plus 8% of a level in xp.
+  A finished slot refills after 8 minutes of play (the first three arrive at once), so there is always a "next contract
+  in 6m" to come back to. One free skip every 10 minutes; the autopilot drops a contract that has made no progress for
+  20 minutes and will go mining for a mining contract once it has been open 5 minutes.
+- **Ascension perks** (Build tab): one point per ascension, permanent. Head Start (begin at level 5/10/15), Deep Pockets
+  (+20% minerals and gas per rank), Battle Rhythm (streak cap +10% per rank), Bloodline (companions +10% per rank),
+  Scavenger (+15% drop chance per rank), Hunter's Mark (bounties 25% more often per rank). The autopilot policy
+  "Spend ascension perks" spreads points lowest rank first.
+- Pacing check: 10 h autopilot sims complete 74–82 contracts and Amon still falls in 4.0–5.3 h (unchanged from before
+  contracts); the first version paid a quarter level per contract with instant refills and cut that to 2–3 h, which is
+  why the refill timer exists.
+
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Race-specific storylines (today every race follows the same quest givers).
