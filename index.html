@@ -3002,10 +3002,18 @@ function confirmBox(title, body, label, fn) {
 function openExport() {
   const code = exportSave();
   modal(`<h2>Export save</h2><p class="note">Copy this code and paste it into Import on another device or browser.</p><textarea id="exportBox" readonly>${code}</textarea><div class="btns"><button class="btn" id="dlBtn">Download file</button><button class="btn" id="copyBtn">Copy</button><button class="btn primary" data-close>Done</button></div>`);
-  $("dlBtn").onclick = () => {
-    const a = document.createElement("a"), d = new Date();
-    a.href = URL.createObjectURL(new Blob([code], { type: "text/plain" }));
-    a.download = `koprulu-idle-${S.name.replace(/[^\w-]+/g, "_")}-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.txt`;
+  $("dlBtn").onclick = async () => {
+    const d = new Date(), filename = `koprulu-idle-${S.name.replace(/[^\w-]+/g, "_")}-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.txt`;
+    // Inside the claude.ai viewer a plain download link is blocked, so the page asks the viewer to save the file; anywhere
+    // else (a local file, GitHub Pages, the desktop shell) the ordinary download link does the job.
+    const dl = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads").catch(() => null) : null;
+    if (dl) {
+      try { await dl.save({ filename, data: code }); toast("Save file downloaded."); }
+      catch (e) { if (e && e.code !== "declined") toast("Downloads are not available here. Use Copy instead."); }
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([code], { type: "text/plain" })); a.download = filename;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     toast("Save file downloaded.");
   };
