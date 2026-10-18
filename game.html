@@ -269,6 +269,13 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .event { font: 600 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--ev, var(--shield)); border: 1px solid var(--ev, var(--shield)); padding: 3px 8px; }
 .event .num { color: var(--ink); margin-left: 6px; }
 
+/* bestiary */
+.beast { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.beast:first-of-type { border-top: 0; }
+.beast b { font-weight: 600; }
+.beast .sub { display: block; color: var(--mute); font-size: 12px; }
+.beast.locked .sub { font-style: italic; }
+
 /* decisions feed */
 .feed { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; font-size: 13px; }
 .feed p { margin: 0; display: grid; grid-template-columns: 74px 92px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -539,6 +546,35 @@ const ZONES = [
 ];
 const MAX_LEVEL = 40;
 
+// Field intel for the bestiary in the Codex, revealed after five kills of each kind.
+const FOE_LORE = {
+  "Zergling": "The Swarm's cheapest strain: fast, expendable and never alone. Two hatch from every egg.",
+  "Outlaw Raider": "Fringe-world bandits in salvaged CMC armor, raiding depots while the marshals are busy with the Zerg.",
+  "Scantid Pack": "Native Mar Sara scorpions the size of dogs. The infestation has made them bolder.",
+  "Confederate Marine": "Resocialized convicts in powered armor, still following orders from a government that no longer exists.",
+  "Goliath Walker": "Twin autocannons on two legs. Slow to turn, deadly once it has you in its sights.",
+  "Hydralisk": "The Swarm's ranged backbone, spitting armor-piercing spines from a hooded skull.",
+  "Infested Terran": "Colonists consumed by the hyper-evolutionary virus and packed with volatile biomass. They do not survive the fight either way.",
+  "Lurker": "A hydralisk evolution that fights from under the ground, raking lines of spines through anything above.",
+  "Ultralisk": "Kaiser blades the length of a dropship. The Swarm's living siege engine.",
+  "Fanatic Zealot": "Khalai warriors sworn to the Conclave. Their psi blades cut through steel and doubt alike.",
+  "Dragoon": "A crippled warrior's mind sealed inside a four-legged walker so it can fight on.",
+  "Mutalisk": "Winged Zerg flier whose glaive wurms bounce between targets.",
+  "Rogue Dark Templar": "Nerazim who left the Matriarch's protection. Cloaked, patient and impossible to reason with.",
+  "Corrupted Archon": "Two templar merged into one being of psionic energy, now unravelling into something wrong.",
+  "Void Scourge": "Suicidal fliers of the Swarm, burrowed into the Void's edge and drawn to anything that moves.",
+  "Dominion Marauder": "Heavy infantry with concussive grenade launchers. Mengsk's answer to everything.",
+  "Siege Tank": "The Arclite shock cannon can level a city block. It needs time to deploy; do not give it any.",
+  "Viking": "A fighter that lands as a walker. Dominion pilots call the transformation 'coming down to say hello'.",
+  "Moebius Operative": "Mercenaries on the Foundation's payroll, guarding research no one should have funded.",
+  "Hybrid Reaver": "Zerg bulk grafted with Protoss psionics. Grown in vats on Amon's orders.",
+  "Void Shade": "A silhouette of a fallen warrior, animated by the Void and hungry for what it lost.",
+  "Shade of Amon": "A fragment of the dark god's will given shape. Each one destroyed weakens the whole.",
+  "Void Thrasher": "A colossal Void beast that anchors Amon's realm to reality.",
+  "Hybrid Dominator": "The apex hybrid: a psionic nightmare that can turn minds and tear ships apart.",
+};
+const LORE_AT = 5;
+
 // Each race hears the campaign from its own side. Kill targets and counts stay the same; only the voices change.
 // Terran heroes get the base text above (Raynor, Kerrigan, Valerian...). Protoss follow Tassadar, Fenix and Artanis;
 // Zerg serve the Overmind, then Kerrigan's rebellion.
@@ -791,6 +827,8 @@ const FEATS = [
   { id: "survivor", name: "Hard to Kill", desc: "Fall 10 times and keep going", valor: 5, test: s => s.stats.deaths >= 10 },
   { id: "marathon", name: "Marathon", desc: "10 hours played", valor: 15, test: s => (s.stats.totalPlayed || 0) >= 36000 },
   { id: "ascend", name: "Xel'Naga Touched", desc: "Ascend", valor: 30, crate: true, test: s => s.ascensions >= 1 },
+  { id: "intel12", name: "Xenobiologist", desc: "Reveal 12 bestiary entries", valor: 10, test: s => Object.values(s.stats.foeKills || {}).filter(n => n >= LORE_AT).length >= 12 },
+  { id: "intel24", name: "Field Guide", desc: "Reveal every bestiary entry", valor: 25, crate: true, test: s => Object.keys(FOE_LORE).every(k => (s.stats.foeKills || {})[k] >= LORE_AT) },
   { id: "events10", name: "Storm Chaser", desc: "See 10 world events", valor: 10, test: s => (s.stats.events || 0) >= 10 },
   { id: "flee10", name: "Live to Fight", desc: "Escape 10 losing fights", valor: 5, test: s => (s.stats.flees || 0) >= 10 },
   { id: "contract10", name: "Contractor", desc: "Complete 10 contracts", valor: 10, test: s => (s.stats.contracts || 0) >= 10 },
@@ -881,7 +919,7 @@ function newGame(name, race, cls, carry) {
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
     event: null, nextEvent: 600 + rnd() * 300,
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0,
-    deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
+    deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, foeKills: carry.stats.foeKills, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
     log: [], feed: [], lastSeen: Date.now(),
   };
   s.gear.weapon = makeItem(s, "weapon", 1, 0);
@@ -982,7 +1020,7 @@ function spawnFoe(s, boss) {
   const idx = boss ? -1 : Math.floor(rnd() * z.foes.length);
   const e = boss ? z.boss : z.foes[idx];
   const f = foeStats(L, e, boss);
-  const foe = { name: e.name, title: boss ? z.boss.title : "", idx, L, hp: f.hp, max: f.hp, atk: f.atk, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss: !!boss };
+  const foe = { name: e.name, kind: e.name, title: boss ? z.boss.title : "", idx, L, hp: f.hp, max: f.hp, atk: f.atk, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss: !!boss };
   // every so often an elite bounty target shows up: tougher, triple rewards, guaranteed rare loot
   if (!boss && s.level >= 3 && (s.stats.played >= (s.nextBounty || 0) || (evOn(s, "patrol") && rnd() < 1 / 3))) {
     s.nextBounty = s.stats.played + (480 + rnd() * 420) / (1 + 0.25 * perk(s, "mark"));
@@ -1167,6 +1205,8 @@ function killFoe(s, d) {
   const diff = f.L - s.level;
   const xpMod = clamp(1 + diff * (diff > 0 ? 0.1 : 0.15), 0.3, 1.5);
   const ess = 1 + 0.04 * s.essence;
+  if (!s.stats.foeKills) s.stats.foeKills = {};
+  if (f.kind) s.stats.foeKills[f.kind] = (s.stats.foeKills[f.kind] || 0) + 1;
   s.streak = (s.streak || 0) + 1;
   if (s.streak > (s.bestStreak || 0)) s.bestStreak = s.streak;
   const cap = streakCap(s), streakMul = 1 + Math.min(s.streak, cap) * 0.01;
@@ -1859,7 +1899,7 @@ function hydrate(o) {
   o.upg = { weapons: 0, armor: 0, logistics: 0, salvage: 0, ...(o.upg || {}) };
   o.tal = Object.fromEntries(TALENTS.map(t => [t.id, num((o.tal || {})[t.id], 0, 0, TALENT_MAX)]));
   o.quests = o.quests || {}; o.bosses = o.bosses || {}; o.cds = o.cds || {}; o.buffs = Array.isArray(o.buffs) ? o.buffs : [];
-  o.stats = { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(o.stats || {}) };
+  o.stats = { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(o.stats || {}) }; if (!o.stats.foeKills || typeof o.stats.foeKills !== "object") o.stats.foeKills = {};
   o.log = Array.isArray(o.log) ? o.log : []; o.feed = Array.isArray(o.feed) ? o.feed : []; o.deaths = Array.isArray(o.deaths) ? o.deaths : [];
   if (!["fight", "seek", "rest", "idle", "dead", "mine"].includes(o.mode)) o.mode = "seek";
   const f = o.foe;
@@ -2117,14 +2157,23 @@ function renderPane() {
   }
   if (UI.tab === "codex") {
     h += `<div class="card"><h3>${RACES[S.race].name}</h3><p>${RACES[S.race].blurb} ${RACES[S.race].passive}</p></div>`;
+    const fk = S.stats.foeKills || {}, known = Object.values(fk).filter(n => n >= LORE_AT).length;
+    h += `<p class="note">Bestiary: ${known} of ${Object.keys(FOE_LORE).length} entries revealed. Intel unlocks after ${LORE_AT} kills of a kind.</p>`;
     ZONES.forEach((zz, i) => {
       if (!S.seen[i]) return;
-      h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${S.bosses[i] ? `<p><b>${zz.boss.name}</b>, ${zz.boss.title}. ${zz.boss.line}</p>` : ""}</div>`;
+      const foes = zz.foes.map(e => { const n = fk[e.name] || 0, open = n >= LORE_AT; return `<div class="beast ${open ? "" : "locked"}"><span><b>${e.name}</b><span class="sub">${open ? FOE_LORE[e.name] || "" : `Intel in ${LORE_AT - n} more kill${LORE_AT - n === 1 ? "" : "s"}.`}</span></span><span class="num">${n}</span></div>`; }).join("");
+      h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${foes}${S.bosses[i] ? `<div class="beast"><span><b>${zz.boss.name}</b>, ${zz.boss.title}<span class="sub">${bossLine(S, zz)}</span></span><span class="num">${fk[zz.boss.name] || 0}</span></div>` : ""}</div>`;
     });
+    const met = COMPANIONS.filter(c => S.bosses[c.from]);
+    if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${c.role}<span class="sub">${c.blurb}</span></span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
     h += `<div class="card"><h3>Record</h3><div class="sum">
       <div><span class="label">Kills</span><span class="num">${fmt(S.stats.kills)}</span></div><div><span class="label">Bosses</span><span class="num">${S.stats.bosses}</span></div>
       <div><span class="label">Instances</span><span class="num">${S.stats.runs || 0}</span></div><div><span class="label">Deaths</span><span class="num">${S.stats.deaths}</span></div>
-      <div><span class="label">Items found</span><span class="num">${fmt(S.stats.items)}</span></div><div><span class="label">Time played</span><span class="num">${dur(S.stats.totalPlayed || S.stats.played)}</span></div></div></div>`;
+      <div><span class="label">Items found</span><span class="num">${fmt(S.stats.items)}</span></div><div><span class="label">Time played</span><span class="num">${dur(S.stats.totalPlayed || S.stats.played)}</span></div>
+      <div><span class="label">Bounties</span><span class="num">${S.stats.bounties || 0}</span></div><div><span class="label">Contracts</span><span class="num">${S.stats.contracts || 0}</span></div>
+      <div><span class="label">Events</span><span class="num">${S.stats.events || 0}</span></div><div><span class="label">Best streak</span><span class="num">${S.bestStreak || 0}</span></div>
+      <div><span class="label">Minerals mined</span><span class="num">${fmt(S.stats.mined || 0)}</span></div><div><span class="label">Items crafted</span><span class="num">${S.stats.crafted || 0}</span></div>
+      <div><span class="label">Escapes</span><span class="num">${S.stats.flees || 0}</span></div><div><span class="label">Ascensions</span><span class="num">${S.ascensions}</span></div></div></div>`;
     h += `<div class="card"><h3>Save data</h3><p>Progress saves in this browser every few seconds. Export a save code to move it to another device.</p>
       <div class="btns" style="justify-content:start"><button class="btn small" data-act="export">Export save</button><button class="btn small" data-act="import">Import save</button><button class="btn small ghost" data-act="reset">New hero</button></div></div>`;
     h += `<p class="note">Fan-made, non-commercial prototype. StarCraft and its characters are trademarks of Blizzard Entertainment.</p>`;
