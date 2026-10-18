@@ -393,12 +393,12 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
       <div class="row" style="margin-top:10px"><div class="modeline" id="modeLine" style="margin:0"></div><span class="streak" id="streak" hidden></span><span class="event" id="eventPill" hidden></span></div>
       <div class="abilities" id="abilities"></div>
       <div class="actions">
-        <button class="btn" id="engageBtn">Engage</button>
-        <button class="btn" id="restBtn">Rest</button>
-        <button class="btn" id="fleeBtn" hidden>Flee</button>
-        <button class="btn" id="mineBtn">Mine</button>
-        <button class="btn" id="bossBtn">Challenge boss</button>
-        <button class="btn" id="leaveBtn" hidden>Leave instance</button>
+        <button class="btn" id="engageBtn" title="Find the next enemy (E)">Engage</button>
+        <button class="btn" id="restBtn" title="Rest between fights (R)">Rest</button>
+        <button class="btn" id="fleeBtn" hidden title="Break off this fight (F)">Flee</button>
+        <button class="btn" id="mineBtn" title="Work the mineral field (M)">Mine</button>
+        <button class="btn" id="bossBtn" title="Challenge the zone boss (B)">Challenge boss</button>
+        <button class="btn" id="leaveBtn" hidden title="Leave the instance (L)">Leave instance</button>
       </div>
       <div class="log" id="log" aria-live="off"></div>
     </section>
@@ -932,7 +932,7 @@ const streakCap = s => STREAK_MAX + 10 * perk(s, "rhythm");
 
 // First-hour tips, one at a time, each shown once a condition is met and dismissed by hand.
 const TIPS = [
-  { id: "auto", when: s => s.stats.kills >= 1, text: "Autopilot is fighting, resting and equipping for you. Flip the switch at the top right to take the controls; keys 1, 2 and 3 fire abilities." },
+  { id: "auto", when: s => s.stats.kills >= 1, text: "Autopilot is fighting, resting and equipping for you. Flip the switch at the top right to take the controls; keys 1, 2 and 3 fire abilities, E engages, R rests, M mines, B challenges the boss." },
   { id: "loot", when: s => s.stats.items >= 1, text: "Loot cards at the bottom left show what dropped. Upgrades are equipped for you; the Gear tab holds the rest." },
   { id: "level", when: s => s.level >= 2, text: "Every level grants a talent point and a 20-second Surge. Points are spent for you; the Build tab lets you steer them." },
   { id: "contracts", when: s => s.stats.played >= 150, text: "Contracts in the Quests tab are short goals with rewards. A finished slot refills every 8 minutes, so there is always a next one." },
@@ -2453,7 +2453,7 @@ function renderLive() {
   }
   let ml = "";
   if (S.mode === "idle") ml = S.pol.autopilot ? "Autopilot holding. Turn on Keep fighting to continue." : "<b>Manual control.</b> Engage enemies, fire abilities with 1, 2, 3, and rest when you need to.";
-  else if (S.mode === "fight") ml = S.pol.autopilot && S.pol.abilities ? "<b>Autopilot</b> is choosing abilities. Click one to fire it yourself." : "<b>Your call.</b> Fire abilities with the buttons or keys 1, 2, 3.";
+  else if (S.mode === "fight") ml = S.pol.autopilot && S.pol.abilities ? "<b>Autopilot</b> is choosing abilities. Click one to fire it yourself." : "<b>Your call.</b> Fire abilities with the buttons or keys 1, 2, 3. F flees.";
   else if (S.mode === "rest") ml = "Recovering health and energy.";
   else if (S.mode === "mine") ml = `Mining: ${fmt(mineRate(S))} minerals a second${S.mineFor > 0 ? `, ${Math.ceil(S.mineFor)}s to go` : ""}. Press Engage to stop.`;
   else if (S.mode === "dead") ml = "Waiting for the medevac.";
@@ -2499,6 +2499,10 @@ $("abilities").addEventListener("click", e => { const b = e.target.closest("[dat
 document.addEventListener("keydown", e => {
   if (!S || $("game").hidden || e.target.matches("input, textarea, select")) return;
   if (["1", "2", "3"].includes(e.key)) useAbility(S, S.loadout[+e.key - 1], false);
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  // manual-play hotkeys mirror the buttons under the scene and respect their disabled state
+  const k = e.key.toLowerCase(), press = id => { const b = $(id); if (b && !b.hidden && !b.disabled) { b.click(); e.preventDefault(); } };
+  if (k === "e") press("engageBtn"); else if (k === "r") press("restBtn"); else if (k === "f") press("fleeBtn"); else if (k === "m") press("mineBtn"); else if (k === "b") press("bossBtn"); else if (k === "l") press("leaveBtn");
 });
 $("engageBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "rest" || S.mode === "mine") { S.mode = "seek"; S.timer = 0.5; delete S.mineFor; } });
 $("mineBtn").addEventListener("click", () => { if (startMining(S, S.pol.autopilot ? 60 : undefined)) log(S, "k", "Heading to the mineral field."); });

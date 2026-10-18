@@ -186,6 +186,12 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   contracts); the first version paid a quarter level per contract with instant refills and cut that to 2–3 h, which is
   why the refill timer exists.
 
+## Manual play
+Autopilot off means the player presses Engage after every kill, Rest, Mine, Flee and Challenge boss by hand and fires
+abilities with the three buttons or keys 1 to 3. Hotkeys mirror the buttons and respect their disabled state: E engage,
+R rest, F flee, M mine, B challenge boss, L leave instance; they are ignored while typing in an input. The buttons
+carry the key in their tooltip and the first tip names them.
+
 ## Daily check-in
 The first session of each local day pays a supply crate (rare or better at the hero's level, rolled higher from a
 7-day streak) and an hour of Rested (+15% xp, shown next to the hero's buffs and ticking down only while playing).
