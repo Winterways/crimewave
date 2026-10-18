@@ -316,6 +316,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
 .float { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--plate-2); border: 1px solid var(--acc); padding: 10px 14px; font-size: 13px; z-index: 30; max-width: min(360px, calc(100vw - 32px)); }
 
 .item .sub.on { color: var(--ink); } .item .sub.on b { color: var(--good); }
+.hl { margin: 0; padding-left: 18px; font-size: 13px; color: var(--mute); display: grid; gap: 3px; } .hl b { color: var(--ink); font-weight: 600; }
 .card p.hz { color: var(--ink); } .card p.hz b { color: var(--acc); font-weight: 600; }
 kbd { font: 600 11px var(--f-mono); background: var(--plate); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; color: var(--ink); }
 .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 13px; }
@@ -1601,6 +1602,7 @@ function gainXp(s, xp) {
 function gainItem(s, it) {
   s.stats.items++;
   if (it.rarity > (s.stats.bestRarity || 0)) s.stats.bestRarity = it.rarity;
+  if (SIMULATING && s.awayBest !== undefined && (!s.awayBest || it.rarity > s.awayBest.rarity || (it.rarity === s.awayBest.rarity && itemGain(s, it) > s.awayBest.gain))) s.awayBest = { name: it.name, rarity: it.rarity, slot: it.slot, gain: itemGain(s, it) };
   if (it.rarity >= 2) contractEvent(s, "rare", 1);
   fx(s, "loot", { rarity: it.rarity });
   if (s === S && !SIMULATING && (it.rarity >= 2 || itemGain(s, it) > 0.001)) lootCard(it, itemGain(s, it));
@@ -2258,14 +2260,18 @@ function dailyCheck(s) {
 setInterval(() => { try { dailyCheck(S); } catch (e) {} }, 60000); // catches midnight passing while the tab is open
 
 function simulate(s, seconds) {
-  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0, events: s.stats.events || 0 };
+  const before = { featIds: Object.keys(s.feats || {}), bossNames: ZONES.filter((z, i) => s.bosses[i]).map(z => z.boss.name), level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0, events: s.stats.events || 0 };
   const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
+  s.awayBest = null; // the best item found while away, recorded by gainItem
   SIMULATING = true;
   try { while (t < seconds) { step(s, Math.min(dt, seconds - t)); t += dt; } } finally { SIMULATING = false; FXQ.length = 0; }
   // a supply drop waits after a long absence: one rare-or-better item for the hero's level
   let drop = null;
   if (seconds >= 4 * 3600) { drop = makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, s.level), Math.max(2, rollRarity(1.5))); gainItem(s, drop); log(s, "w", `A supply drop was waiting for you: ${drop.name}.`); }
-  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts, events: (s.stats.events || 0) - before.events, drop };
+  const best = s.awayBest; delete s.awayBest;
+  const newFeats = FEATS.filter(f => s.feats[f.id] && !before.featIds.includes(f.id)).map(f => f.name);
+  const newBosses = ZONES.filter((z, i) => s.bosses[i] && !before.bossNames.includes(z.boss.name)).map(z => z.boss.name);
+  return { seconds, fromLevel: before.level, toLevel: s.level, best, newFeats, newBosses, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts, events: (s.stats.events || 0) - before.events, drop };
 }
 const OFFLINE_CAP = 8 * 3600;
 
@@ -3020,6 +3026,15 @@ function openImport() {
   $("importFile").onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { $("importBox").value = t.trim(); toast(`Loaded ${f.name}. Press Import.`); }); };
   $("importGo").onclick = () => { if (importSave($("importBox").value)) { closeModal(); startGame(); toast("Save imported."); } else toast("That code is not a valid save."); };
 }
+// The lines under the numbers: what actually happened, by name.
+function awayHighlights(r) {
+  const h = [];
+  if (r.levels > 0) h.push(`Level <b>${r.fromLevel}</b> to <b>${r.toLevel}</b>${r.toLevel >= MAX_LEVEL ? ", the cap" : ""}.`);
+  if (r.newBosses && r.newBosses.length) h.push(`Defeated <b>${r.newBosses.map(esc).join("</b>, <b>")}</b>.`);
+  if (r.best && r.best.rarity >= 2) h.push(`Best find: <b style="color:${RCOL[r.best.rarity]}">${esc(r.best.name)}</b>${r.best.gain > 0.001 ? ", equipped" : ""}.`);
+  if (r.newFeats && r.newFeats.length) h.push(`Feats: <b>${r.newFeats.slice(0, 4).map(esc).join("</b>, <b>")}</b>${r.newFeats.length > 4 ? ` and ${r.newFeats.length - 4} more` : ""}.`);
+  return h.length ? `<ul class="hl">${h.map(x => `<li>${x}</li>`).join("")}</ul>` : "";
+}
 function showAway(r) {
   if (r.seconds < 60) return;
   modal(`<h2>While you were away</h2><p class="note">${esc(S.name)} kept fighting for ${dur(r.seconds)}${r.seconds >= OFFLINE_CAP ? " (the most the autopilot covers)" : ""}.</p>
@@ -3039,6 +3054,7 @@ function showAway(r) {
     </div>
     ${r.drop ? `<p class="note" style="color:${RCOL[r.drop.rarity]}">${icon(slotIcon(r.drop.slot, S.race), RCOL[r.drop.rarity], 14)} A supply drop was waiting: <b>${esc(r.drop.name)}</b> (${RARITY[r.drop.rarity].name} ${SLOT_LABEL[r.drop.slot].toLowerCase()}). Come back after 4 hours or more for another.</p>` : ""}
     ${S.bosses[ZONES.length - 1] && !S.pol.ascend ? `<p class="note">Amon is dead and the hero is holding at max level. Ascend from the Quests tab, or turn on Auto-ascend in the Autopilot tab.</p>` : ""}
+    ${awayHighlights(r)}
     ${r.zone ? `<p class="note">Now fighting in ${r.zone}.</p>` : ""}${r.deaths ? `<p class="note">Fell ${r.deaths} time${r.deaths > 1 ? "s" : ""} along the way.</p>` : ""}
     <div class="btns"><button class="btn primary" data-close>Continue</button></div>`);
 }
