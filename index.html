@@ -941,6 +941,7 @@ const FEATS = [
   { id: "intel24", name: "Field Guide", desc: "Reveal every bestiary entry", valor: 25, crate: true, test: s => Object.keys(FOE_LORE).every(k => (s.stats.foeKills || {})[k] >= LORE_AT) },
   { id: "events10", name: "Storm Chaser", desc: "See 10 world events", valor: 10, test: s => (s.stats.events || 0) >= 10 },
   { id: "flee10", name: "Live to Fight", desc: "Escape 10 losing fights", valor: 5, test: s => (s.stats.flees || 0) >= 10 },
+  { id: "reforge10", name: "Master Smith", desc: "Reforge gear 10 times", valor: 10, test: s => (s.stats.reforged || 0) >= 10 },
   { id: "contract10", name: "Contractor", desc: "Complete 10 contracts", valor: 10, test: s => (s.stats.contracts || 0) >= 10 },
   { id: "contract50", name: "Guild Favourite", desc: "Complete 50 contracts", valor: 25, crate: true, test: s => (s.stats.contracts || 0) >= 50 },
   { id: "daily3", name: "Regular", desc: "Check in 3 days running", valor: 5, test: s => ((s.daily || {}).best || 0) >= 3 },
@@ -1781,6 +1782,11 @@ function autopilot(s, d) {
     const likely = expected > have * 1.02;
     if (likely || s.mats.scrap > craftCost(s).scrap * 4) { s.craftCd = s.stats.played + (likely ? 10 : 90); craftItem(s, slot, true); }
   }
+  if (P.craft && s.mode !== "fight" && (s.reforgeCd || 0) <= s.stats.played) { // spare scrap goes into reforging the weakest slot, keeping enough scrap and cores for crafting
+    const cands = SLOTS.filter(k => s.gear[k] && (s.gear[k].rfFail || 0) < 3).sort((a, b) => ((s.gear[a].reforged || 0) + (s.gear[a].rfFail || 0)) - ((s.gear[b].reforged || 0) + (s.gear[b].rfFail || 0)) || (a === weakestSlot(s) ? -1 : 0));
+    const slot = cands[0], it = slot && s.gear[slot];
+    if (it && canReforge(s, slot)) { const c = reforgeCost(s, it); if (s.mats.scrap >= c.scrap + craftCost(s).scrap * 3 && s.mats.cores >= c.cores + 2) { s.reforgeCd = s.stats.played + REFORGE_CD; reforgeItem(s, slot, true); } }
+  }
   if (s.run) return; // inside an instance: no travel, bosses or new runs
   // 4e. mining: when gas is banked but minerals are short for research, or a crate is wanted
   if (P.mine && s.mode === "seek" && s.hp >= d.hp * 0.9 && (s.mineCd || 0) <= s.stats.played) {
@@ -2001,6 +2007,33 @@ function makeKit(s, byAI) {
   log(s, "k", `Made a ${PROF_NAMES[s.race].kit} (${s.kits} carried).`);
   if (byAI) decide(s, "Craft", `Made a ${PROF_NAMES[s.race].kit} from spare materials (${s.kits} carried).`);
   bump(); return true;
+}
+/* Reforge: re-roll an equipped item's stats (and affix) for scrap and a core. A better roll replaces it; a worse one is
+   discarded, so the only risk is the materials. Late in a run scrap piles up in the tens of thousands with nothing to
+   buy, and this turns it into small, steady power gains. */
+const REFORGE_CD = 45;
+function reforgeCost(s, it) { return { scrap: 80 + it.ilvl * 8, cores: it.rarity >= 3 ? 2 : 1 }; }
+function canReforge(s, slot) { const it = s.gear[slot]; if (!it) return false; const c = reforgeCost(s, it); return s.mats.scrap >= c.scrap && s.mats.cores >= c.cores; }
+function reforgeItem(s, slot, byAI) {
+  if (!canReforge(s, slot)) return null;
+  const it = s.gear[slot], c = reforgeCost(s, it);
+  s.mats.scrap -= c.scrap; s.mats.cores -= c.cores;
+  const nu = makeItem(s, slot, it.ilvl, it.rarity);
+  if (it.rarity === 4) nu.name = it.name; // a legendary keeps its name
+  nu.crafted = it.crafted; nu.reforged = (it.reforged || 0) + 1;
+  const gain = itemGain(s, nu);
+  profGain(s, "craft", 12 + it.ilvl); s.stats.reforged = (s.stats.reforged || 0) + 1;
+  if (gain > 0.0005) {
+    s.gear[slot] = nu;
+    const msg = `Reforged ${nu.name}: +${(gain * 100).toFixed(1)}% power.`;
+    if (byAI) decide(s, "Craft", msg); else log(s, "w", msg);
+    fx(s, "shard"); if (s === S) UI.flashSlot = slot;
+  } else {
+    it.rfFail = (it.rfFail || 0) + 1; // the autopilot gives up on an item after three failed rolls, until a new one is equipped
+    log(s, "k", `Reforged ${it.name}: the new roll was no better, so the old one stays.`);
+  }
+  checkFeats(s); bump();
+  return gain;
 }
 function canUseKit(s) { return (s.kits || 0) > 0 && (s.kitCd || 0) <= s.stats.played && s.mode === "fight" && s.hp < derive(s).hp * 0.9; }
 function useKit(s, byAI) {
@@ -2435,6 +2468,10 @@ function renderPane() {
     const kc = kitCost(S);
     h += `<div class="card"><div class="row"><h3>${N.kit}</h3><span class="num">${kc.scrap} ${N.scrap} · ${kc.shards} ${N.shards}</span></div><p>Restores ${Math.round(KIT_HEAL * 100)}% health in the middle of a fight, bosses and instances included, once every ${KIT_CD} s. Carrying <b>${S.kits || 0}</b> of ${KIT_MAX}. Instance bosses always leave one; bounty elites sometimes do.</p>
       <div class="btns" style="justify-content:start"><button class="btn small" data-act="makekit" ${canMakeKit(S) ? "" : "disabled"}>Make one</button></div></div>`;
+    const worn = SLOTS.filter(k => S.gear[k]);
+    h += `<div class="card ${worn.some(k => canReforge(S, k)) ? "cur" : ""}"><div class="row"><h3>Reforge</h3><span class="num">${S.stats.reforged || 0} done</span></div>
+      <p>Re-rolls an equipped item's stats and affix for ${N.scrap} and a core. A better roll replaces it; a worse one is thrown away.${S.pol.autopilot && S.pol.craft ? " The autopilot reforges your weakest slot with spare materials." : ""}</p>
+      <div class="chips">${worn.map(k => { const c = reforgeCost(S, S.gear[k]); return `<button class="chip" data-reforge="${k}" title="${esc(S.gear[k].name)}" ${canReforge(S, k) ? "" : "disabled"}>${icon(slotIcon(k, S.race), "#8fb3d9", 14)} ${SLOT_LABEL[k]} · ${c.scrap} / ${c.cores}</button>`; }).join("")}</div></div>`;
   }
   if (UI.tab === "talents") {
     const abs = CLASSES[S.cls].abilities;
@@ -2676,6 +2713,7 @@ $("pane").addEventListener("click", e => {
   if (act === "stim") useStim(S, false);
   if (act === "makekit") makeKit(S, false);
   if (t.dataset.craft) { if (S.pol.autopilot && S.pol.craft) { S.pol.craft = false; toast("Autopilot crafting is now off, so your materials are yours to spend."); } craftItem(S, t.dataset.craft, false); }
+  if (t.dataset.reforge) { const g = reforgeItem(S, t.dataset.reforge, false); if (g != null) toast(g > 0.0005 ? `Reforged: +${(g * 100).toFixed(1)}% power.` : "The new roll was no better. The old item stays."); }
   if (act === "ascend") confirmBox("Ascend?", "Your level, zones, gear and talents reset. Research, policies and essence carry over.", "Ascend", ascend);
   if (act === "export") openExport();
   if (act === "import") openImport();
