@@ -316,6 +316,10 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
 .float { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--plate-2); border: 1px solid var(--acc); padding: 10px 14px; font-size: 13px; z-index: 30; max-width: min(360px, calc(100vw - 32px)); }
 
 .item .sub.on { color: var(--ink); } .item .sub.on b { color: var(--good); }
+.card.plan ol { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink); display: grid; gap: 3px; }
+.chron { display: grid; gap: 4px; max-height: 260px; overflow-y: auto; font-size: 13px; }
+.chron p { margin: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--ink); }
+.chron time { font: 11px var(--f-mono); color: var(--faint); padding-top: 2px; }
 .hl { margin: 0; padding-left: 18px; font-size: 13px; color: var(--mute); display: grid; gap: 3px; } .hl b { color: var(--ink); font-weight: 600; }
 .card p.hz { color: var(--ink); } .card p.hz b { color: var(--acc); font-weight: 600; }
 kbd { font: 600 11px var(--f-mono); background: var(--plate); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; color: var(--ink); }
@@ -1163,7 +1167,7 @@ function newGame(name, race, cls, carry) {
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
     streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
-    event: null, nextEvent: 600 + rnd() * 300, tips: { ...(carry?.tips || {}) }, daily: carry?.daily || { last: "", streak: 0, best: 0 }, rested: 0,
+    event: null, nextEvent: 600 + rnd() * 300, tips: { ...(carry?.tips || {}) }, chron: carry?.chron || [], daily: carry?.daily || { last: "", streak: 0, best: 0 }, rested: 0,
     id: Date.now().toString(36) + Math.floor(rnd() * 1e6).toString(36),
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0, kits: carry?.kits || 0, kitCd: 0,
     deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, foeKills: carry.stats.foeKills, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
@@ -1298,6 +1302,14 @@ function spawnFoe(s, boss) {
    LOGGING
    ========================================================================== */
 function log(s, cls, msg) { s.log.push([cls, msg]); if (s.log.length > 80) s.log.splice(0, s.log.length - 80); if (s === S) UI.logRev++; }
+// The chronicle: a dated list of milestones (bosses, every fifth level, legendaries, first instance clears, ascensions)
+// that survives ascension and reads back in the Codex. Entries written during offline catch-up carry the time they
+// would have happened, not the time the tab was reopened.
+function chron(s, text) {
+  s.chron = s.chron || [];
+  s.chron.push([s.simNow || Date.now(), text]);
+  if (s.chron.length > 60) s.chron.splice(0, s.chron.length - 60);
+}
 function decide(s, tag, msg) {
   s.feed.push([Math.floor(s.stats.played), tag, msg]);
   if (s.feed.length > 60) s.feed.splice(0, s.feed.length - 60);
@@ -1559,6 +1571,7 @@ function killFoe(s, d) {
   if (f.boss) {
     if (!s.bosses[s.zone]) {
       s.bosses[s.zone] = true; s.stats.bosses++;
+      chron(s, `Defeated ${f.name} in ${z.name}${s.zone + 1 < ZONES.length ? `; ${ZONES[s.zone + 1].name} is open` : ""}.`);
       if (s.zone + 1 < ZONES.length) { s.unlocked = Math.max(s.unlocked, s.zone + 1); log(s, "w", `${ZONES[s.zone + 1].name} is now open.`); fx(s, "banner", { lines: [`${z.name.toUpperCase()} CLEARED`, `${f.name} defeated · ${ZONES[s.zone + 1].name} is open`], col: "#ffb347", snd: "promote", delay: 1, first: true }); }
       else { log(s, "w", "Amon has fallen. Ascension is open in the Quests tab."); fx(s, "banner", { lines: ["AMON HAS FALLEN", "The cycle ends. Ascension is open in the Quests tab."], col: "#ffb347", snd: "promote", delay: 1, first: true }); }
       decide(s, "Boss", `${f.name} defeated.`);
@@ -1576,6 +1589,7 @@ function gainXp(s, xp) {
   while (s.level < MAX_LEVEL && s.xp >= xpNext(s.level)) {
     const before = derive(s), oldRank = rankIdx(s.level);
     s.xp -= xpNext(s.level); s.level++; s.talPts++;
+    if (s.level % 5 === 0) chron(s, `Reached level ${s.level}${s.level >= MAX_LEVEL ? ", the cap" : ""}.`);
     const after = derive(s);
     s.hp = after.hp; s.en = 100;
     // a surge of power for the next 20 seconds, so a level-up is felt in the fight, not only read
@@ -1602,6 +1616,7 @@ function gainXp(s, xp) {
 function gainItem(s, it) {
   s.stats.items++;
   if (it.rarity > (s.stats.bestRarity || 0)) s.stats.bestRarity = it.rarity;
+  if (it.rarity === 4) chron(s, `Found ${it.name}.`);
   if (SIMULATING && s.awayBest !== undefined && (!s.awayBest || it.rarity > s.awayBest.rarity || (it.rarity === s.awayBest.rarity && itemGain(s, it) > s.awayBest.gain))) s.awayBest = { name: it.name, rarity: it.rarity, slot: it.slot, gain: itemGain(s, it) };
   if (it.rarity >= 2) contractEvent(s, "rare", 1);
   fx(s, "loot", { rarity: it.rarity });
@@ -1730,6 +1745,7 @@ function runProgress(s, f) {
   s.run.enc++;
   if (f.boss) {
     const marks = (dg.raid ? 20 : 6) + dg.zone * 2;
+    if (!s.dcd[s.run.d]) chron(s, `Cleared ${dg.name} for the first time.`);
     s.marks += marks;
     s.dcd[s.run.d] = (s.stats.totalPlayed || 0) + (dg.raid ? RAID_LOCK : D_LOCK);
     s.stats.runs = (s.stats.runs || 0) + 1; if (dg.raid) s.stats.raids = (s.stats.raids || 0) + 1;
@@ -2228,7 +2244,8 @@ function ascend() {
   if (!S.bosses[ZONES.length - 1]) return;
   if (S.run) leaveRun(S);
   const gain = ascendGain(S);
-  const carry = { daily: S.daily, tips: S.tips, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, kits: S.kits, feats: S.feats, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
+  chron(S, `Ascended at level ${S.level}: cycle ${S.ascensions + 2} begins with ${S.essence + gain} essence.`);
+  const carry = { daily: S.daily, tips: S.tips, chron: S.chron, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, kits: S.kits, feats: S.feats, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
   S = newGame(S.name, S.race, S.cls, carry);
   log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience) and a perk point. Cycle ${S.ascensions + 1} begins: enemies have +${Math.round(CYCLE_SCALE * S.ascensions * 100)}% health and damage and pay +${Math.round(CYCLE_PAY * S.ascensions * 100)}% minerals and gas.`);
   fx(S, "banner", { lines: [`ASCENSION ${S.ascensions}`, `+${gain} essence · 1 perk point · cycle ${S.ascensions + 1} begins`], col: "#c06cff", snd: "promote" });
@@ -2263,8 +2280,9 @@ function simulate(s, seconds) {
   const before = { featIds: Object.keys(s.feats || {}), bossNames: ZONES.filter((z, i) => s.bosses[i]).map(z => z.boss.name), level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0, events: s.stats.events || 0 };
   const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
   s.awayBest = null; // the best item found while away, recorded by gainItem
+  const t0 = Date.now() - seconds * 1000;
   SIMULATING = true;
-  try { while (t < seconds) { step(s, Math.min(dt, seconds - t)); t += dt; } } finally { SIMULATING = false; FXQ.length = 0; }
+  try { while (t < seconds) { s.simNow = t0 + t * 1000; step(s, Math.min(dt, seconds - t)); t += dt; } } finally { SIMULATING = false; FXQ.length = 0; delete s.simNow; }
   // a supply drop waits after a long absence: one rare-or-better item for the hero's level
   let drop = null;
   if (seconds >= 4 * 3600) { drop = makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, s.level), Math.max(2, rollRarity(1.5))); gainItem(s, drop); log(s, "w", `A supply drop was waiting for you: ${drop.name}.`); }
@@ -2361,7 +2379,7 @@ function hydrate(o) {
   o.tal = Object.fromEntries(TALENTS.map(t => [t.id, num((o.tal || {})[t.id], 0, 0, TALENT_MAX)]));
   o.quests = o.quests || {}; o.bosses = o.bosses || {}; o.cds = o.cds || {}; o.buffs = Array.isArray(o.buffs) ? o.buffs : [];
   o.stats = { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(o.stats || {}) }; if (!o.stats.foeKills || typeof o.stats.foeKills !== "object") o.stats.foeKills = {};
-  o.log = Array.isArray(o.log) ? o.log : []; o.feed = Array.isArray(o.feed) ? o.feed : []; o.deaths = Array.isArray(o.deaths) ? o.deaths : [];
+  o.log = Array.isArray(o.log) ? o.log : []; o.feed = Array.isArray(o.feed) ? o.feed : []; o.chron = Array.isArray(o.chron) ? o.chron.filter(e => Array.isArray(e) && e.length === 2).slice(-60) : []; o.deaths = Array.isArray(o.deaths) ? o.deaths : [];
   if (!["fight", "seek", "rest", "idle", "dead", "mine"].includes(o.mode)) o.mode = "seek";
   const f = o.foe;
   if (f && !(typeof f.hp === "number" && typeof f.max === "number" && typeof f.atk === "number" && typeof f.L === "number" && f.name)) o.foe = null;
@@ -2437,6 +2455,7 @@ $("classPick").addEventListener("click", e => {
 $("startBtn").addEventListener("click", () => {
   const name = $("heroName").value.trim() || ({ terran: "Tychus", protoss: "Talandar", zerg: "Niadra" }[pickState.race]);
   S = newGame(name, pickState.race, pickState.cls);
+  chron(S, `${name} deployed to Mar Sara as a ${RACES[pickState.race].name} ${CLASSES[pickState.cls].name}.`);
   const z = ZONES[0];
   log(S, "w", `${giverOf(S, z)}: "${questText(S, z, 0).d}"`);
   decide(S, "Start", "Autopilot is on. It will fight, rest, equip gear and spend points for you. Switch it off at the top to play manually.");
@@ -2511,6 +2530,7 @@ function renderPane() {
   if (UI.tab === "quests") {
     if (S.bosses[ZONES.length - 1]) h += ascendCard();
     { const eta = levelEta(S); if (eta) h += `<p class="note">Level <span class="num">${S.level + 1}</span> in about <span class="num">${dur(eta)}</span> at this pace.</p>`; }
+    h += planCard();
     ensureContracts(S);
     const canSkip = S.stats.played >= (S.skipAt || 0);
     h += `<div class="row"><h3 class="label">Contracts</h3><span class="note">${canSkip ? "One skip ready" : `Next skip in ${dur(S.skipAt - S.stats.played)}`} · ${S.stats.contracts || 0} completed</span></div>`;
@@ -2645,6 +2665,10 @@ function renderPane() {
   }
   if (UI.tab === "codex") {
     h += `<div class="card"><h3>${RACES[S.race].name}</h3><p>${RACES[S.race].blurb} ${RACES[S.race].passive}</p></div>`;
+    if (S.chron && S.chron.length) {
+      const when = t => { const d = new Date(t); return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); };
+      h += `<div class="card"><h3>Chronicle</h3><div class="chron">${[...S.chron].reverse().slice(0, 30).map(([t, x]) => `<p><time>${when(t)}</time><span>${esc(x)}</span></p>`).join("")}</div>${S.chron.length > 30 ? `<p class="note">${S.chron.length - 30} older entries not shown.</p>` : ""}</div>`;
+    }
     const fk = S.stats.foeKills || {};
     const known = Object.keys(FOE_LORE).filter(k => (fk[k] || 0) >= LORE_AT).length + Object.keys(INSTANCE_LORE).filter(k => (fk[k] || 0) >= (DUNGEONS.some(d => d.boss.name === k) ? 1 : INST_LORE_AT)).length;
     h += `<p class="note">Bestiary: ${known} of ${Object.keys(FOE_LORE).length + Object.keys(INSTANCE_LORE).length} entries revealed. Intel unlocks after ${LORE_AT} kills of a kind in the field, ${INST_LORE_AT} inside instances.</p>`;
@@ -2677,6 +2701,37 @@ function renderPane() {
     h += `<p class="note">Fan-made, non-commercial prototype. StarCraft and its characters are trademarks of Blizzard Entertainment.</p>`;
   }
   p.innerHTML = h;
+}
+// What the autopilot intends to do next, in order, from the same rules it follows.
+function planSteps(s) {
+  const P = s.pol, z = zoneOf(s), out = [];
+  if (!P.autopilot) return ["Manual control: the autopilot is off, so the plan is yours."];
+  if (s.run) { const dg = DUNGEONS[s.run.d]; return [`Finish ${dg.name}: encounter ${Math.min(s.run.enc + 1, dg.enc.length + 1)} of ${dg.enc.length + 1}${P.retreat ? ", leaving if the party is about to fall" : ""}.`]; }
+  if (s.bosses[ZONES.length - 1]) out.push(P.ascend ? "Ascend now: Amon is dead and Auto-ascend is on." : "Hold at the cap: Amon is dead. Ascend from the card above when you are ready.");
+  const q = questState(s, s.zone), hold = Math.max(s.holdUntil || 0, planOf(s).hold || 0);
+  if (q.i < z.quests.length) out.push(`Clear ${z.name}: "${questText(s, z, q.i).t}" (${q.c}/${z.quests[q.i].n}), ${z.quests.length - q.i - 1 ? `then ${z.quests.length - q.i - 1} more quest${z.quests.length - q.i - 1 === 1 ? "" : "s"}` : "the last quest here"}.`);
+  else if (!s.bosses[s.zone]) {
+    if (!P.boss) out.push(`${z.boss.name} is ready, but the Challenge bosses rule is off; press Challenge boss yourself.`);
+    else if ((s.bossLoss || 0) >= s.level) out.push(`Farm to level ${s.level + 1} before trying ${z.boss.name} again (lost at this level).`);
+    else { const m = bossOdds(s, derive(s)); out.push(m >= P.bossMargin ? `Challenge ${z.boss.name} as soon as health is up (margin ${m.toFixed(2)}x, need ${P.bossMargin}x).` : `Farm ${z.name} until the margin against ${z.boss.name} reaches ${P.bossMargin}x (now ${m.toFixed(2)}x).`); }
+  }
+  if (s.bosses[s.zone] && s.zone + 1 < ZONES.length) {
+    const nz = ZONES[s.zone + 1];
+    if (!P.advance) out.push(`Stay in ${z.name}: the Advance rule is off.`);
+    else if (s.level < hold) out.push(`Hold ${z.name} until level ${hold} (your zone plan), then move to ${nz.name}.`);
+    else if (s.level < nz.min) out.push(`Farm ${z.name} to level ${nz.min}, then move to ${nz.name}.`);
+    else out.push(`Move to ${nz.name} when the fight ends.`);
+  }
+  if (P.dungeons) {
+    const dg = DUNGEONS.map((d, i) => [d, i]).find(([d, i]) => s.bosses[d.zone] && s.level >= dLevel(d) - 4 && s.level <= dLevel(d) + 4 && !(s.dfail && s.dfail[i] >= s.level));
+    if (dg) { const why = dungeonReady(s, dg[1]); out.push(why ? `${dg[0].name}: ${why.toLowerCase().replace(/\.$/, "")}.` : `Run ${dg[0].name} when a rehearsal clears it and health is up.`); }
+  }
+  if (planOf(s).mine) out.push(`Mine ${PLAN_MINE[planOf(s).mine].name.toLowerCase()} between fights here (your zone plan).`);
+  return out.length ? out : ["Keep fighting here."];
+}
+function planCard() {
+  const steps = planSteps(S);
+  return `<div class="card plan"><h3>${S.pol.autopilot ? "Autopilot plan" : "Plan"}</h3><ol>${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol></div>`;
 }
 function ascendCard() {
   return `<div class="card cur"><h3>Ascension${S.ascensions ? ` · ${S.ascensions} so far` : ""}</h3><p>Amon has fallen and ${esc(S.name)} is holding at max level. Ascending resets level, zones, gear and talents; research, perks, companions, professions, kits, feats and policies stay${perk(S, "headstart") ? `, and Head Start begins the next cycle at level ${5 * perk(S, "headstart")}` : ""}. Gain <span class="num">${ascendGain(S)}</span> Xel'Naga essence, each worth +4% damage, health and experience forever (${S.essence ? `${S.essence} held now, ` : ""}${S.essence + ascendGain(S)} after), plus one perk point (see Build). Cycle ${S.ascensions + 2} is harder: enemies have <span class="num">+${Math.round(CYCLE_SCALE * (S.ascensions + 1) * 100)}%</span> health and damage and pay <span class="num">+${Math.round(CYCLE_PAY * (S.ascensions + 1) * 100)}%</span> minerals and gas.</p><div class="btns" style="justify-content:start"><button class="btn small primary" data-act="ascend">Ascend</button></div></div>`;
