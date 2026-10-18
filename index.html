@@ -281,6 +281,16 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .beast .sub { display: block; color: var(--mute); font-size: 12px; }
 .beast.locked .sub { font-style: italic; }
 
+/* roster */
+.who { cursor: pointer; }
+.who:hover b { color: var(--acc); }
+.hero-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--plate); padding: 10px 12px; margin-top: 6px; }
+.hero-row.active { border-left: 2px solid var(--acc); }
+.hero-row b { font: 600 15px var(--f-display); display: block; }
+.hero-row .sub { display: block; color: var(--mute); font-size: 12px; }
+.hero-row .btns { flex-wrap: nowrap; }
+#backToRoster { margin-top: 8px; }
+
 /* decisions feed */
 .feed { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; font-size: 13px; }
 .feed p { margin: 0; display: grid; grid-template-columns: 74px 92px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -320,6 +330,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
   <div class="create-foot">
     <label class="field"><span class="label">3 · Callsign</span><input id="heroName" maxlength="20" placeholder="Callsign" value=""></label>
     <button class="btn primary" id="startBtn">Deploy</button>
+    <button class="btn small ghost" id="backToRoster" hidden>Back to roster</button>
     <button class="btn ghost" id="importBtn">Import a save</button>
   </div>
 </div>
@@ -328,7 +339,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
 <div id="game" class="wrap" hidden>
   <header class="panel topbar">
     <div class="brand">Koprulu <span>Idle</span></div>
-    <div class="who"><b id="tName">—</b><small id="tClass">—</small></div>
+    <div class="who" id="who" role="button" tabindex="0" title="Roster: switch or add heroes"><b id="tName">—</b><small id="tClass">—</small></div>
     <div class="xpbox">
       <div class="barrow"><div class="lbl"><span>Level <span class="num" id="tLevel">1</span></span><span class="num" id="tXp">0 / 0</span></div>
       <div class="bar xp" id="tXpWrap" style="--c:var(--xp)"><i id="tXpBar"></i></div></div>
@@ -925,6 +936,7 @@ function newGame(name, race, cls, carry) {
     streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
     event: null, nextEvent: 600 + rnd() * 300,
+    id: Date.now().toString(36) + Math.floor(rnd() * 1e6).toString(36),
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0,
     deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, foeKills: carry.stats.foeKills, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
     log: [], feed: [], lastSeen: Date.now(),
@@ -1894,6 +1906,54 @@ function load() {
   }
   return null;
 }
+/* ---------- roster: up to three heroes per browser ----------
+   The active hero lives at KEY as before; the others are parked at KEY-hero-<id> and only simulate
+   (capped like any absence) when you switch back to them. */
+const ROSTER_MAX = 3;
+const heroKey = id => `${KEY}-hero-${id}`;
+function parkedHeroes() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i); if (!k || !k.startsWith(KEY + "-hero-")) continue;
+      try { const o = JSON.parse(localStorage.getItem(k)); if (o && o.cls && CLASSES[o.cls]) out.push({ key: k, id: k.slice(KEY.length + 6), name: o.name, race: o.race, cls: o.cls, level: o.level || 1, lastSeen: o.lastSeen || 0, ascensions: o.ascensions || 0 }); } catch (e) {}
+    }
+  } catch (e) {}
+  return out.sort((a, b) => b.lastSeen - a.lastSeen);
+}
+function rosterSize() { return parkedHeroes().length + (S ? 1 : 0); }
+function parkCurrent() {
+  if (!S) return;
+  S.lastSeen = Date.now(); S.v = SAVE_V;
+  try { localStorage.setItem(heroKey(S.id), JSON.stringify(S)); localStorage.removeItem(KEY); localStorage.removeItem(KEY + "-backup"); } catch (e) {}
+}
+function switchHero(id) {
+  let o = null;
+  try { o = hydrate(JSON.parse(localStorage.getItem(heroKey(id)))); } catch (e) {}
+  if (!o) { toast("That hero's save could not be read."); return; }
+  parkCurrent();
+  try { localStorage.removeItem(heroKey(id)); } catch (e) {}
+  S = o; backupT = 0;
+  const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
+  $("modal").hidden = true;
+  startGame(); save();
+  if (away > 60) { const r = simulate(S, Math.min(away, OFFLINE_CAP)); bump(); showAway(r); save(); }
+}
+function deleteHero(id) { try { localStorage.removeItem(heroKey(id)); } catch (e) {} openRoster(); }
+function openRoster() {
+  const parked = parkedHeroes(), n = parked.length + (S ? 1 : 0);
+  const row = (h, active) => `<div class="hero-row ${active ? "active" : ""}"><span><b>${esc(h.name)}</b><span class="sub">${RANKS[h.race][rankIdx(h.level)]} · ${RACES[h.race].name} ${CLASSES[h.cls].name} · Level ${h.level}${h.ascensions ? ` · Ascension ${h.ascensions}` : ""}${active ? " · playing now" : h.lastSeen ? ` · away ${dur(Math.max(60, (Date.now() - h.lastSeen) / 1000))}` : ""}</span></span>
+    <span class="btns">${active ? "" : `<button class="btn small primary" data-switch="${h.id}">Switch</button><button class="btn small ghost" data-delete="${h.id}">Delete</button>`}</span></div>`;
+  modal(`<h2>Roster</h2><p class="note">${n} of ${ROSTER_MAX} heroes. A parked hero waits where you left it and catches up (up to ${OFFLINE_CAP / 3600} hours) when you switch back.</p>
+    ${S ? row({ id: S.id, name: S.name, race: S.race, cls: S.cls, level: S.level, ascensions: S.ascensions }, true) : ""}${parked.map(h => row(h, false)).join("")}
+    <div class="btns">${n < ROSTER_MAX ? `<button class="btn" data-newhero>New hero</button>` : `<span class="note">Delete a hero to make room for a new one.</span>`}<button class="btn primary" data-close>Close</button></div>`);
+}
+function newHeroFlow() {
+  parkCurrent(); S = null;
+  $("modal").hidden = true; $("game").hidden = true; $("create").hidden = false; $("backToRoster").hidden = parkedHeroes().length === 0;
+  renderCreate();
+}
+
 const num = (v, d, lo, hi) => (typeof v === "number" && isFinite(v) ? clamp(v, lo ?? -Infinity, hi ?? Infinity) : d);
 function hydrate(o) {
   if (!o || !o.cls || !CLASSES[o.cls] || !RACES[o.race]) return null;
@@ -1925,6 +1985,7 @@ function hydrate(o) {
   o.contracts = Array.isArray(o.contracts) ? o.contracts.filter(c => c && CONTRACT_KINDS[c.kind] && typeof c.n === "number" && c.reward && (c.zone === undefined || ZONES[c.zone])).slice(0, 3) : [];
   o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0);
   o.event = o.event && EVENTS.some(e => e.id === o.event.id) && typeof o.event.t === "number" ? o.event : null; o.nextEvent = num(o.nextEvent, (o.stats.played || 0) + 600, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
+  o.id = typeof o.id === "string" && o.id ? o.id : Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5); o.pol.fleeAt = num(o.pol.fleeAt, 20, 5, 60);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -2185,7 +2246,7 @@ function renderPane() {
       <div><span class="label">Minerals mined</span><span class="num">${fmt(S.stats.mined || 0)}</span></div><div><span class="label">Items crafted</span><span class="num">${S.stats.crafted || 0}</span></div>
       <div><span class="label">Escapes</span><span class="num">${S.stats.flees || 0}</span></div><div><span class="label">Ascensions</span><span class="num">${S.ascensions}</span></div></div></div>`;
     h += `<div class="card"><h3>Save data</h3><p>Progress saves in this browser every few seconds. Export a save code to move it to another device.</p>
-      <div class="btns" style="justify-content:start"><button class="btn small" data-act="export">Export save</button><button class="btn small" data-act="import">Import save</button><button class="btn small ghost" data-act="reset">New hero</button></div></div>`;
+      <div class="btns" style="justify-content:start"><button class="btn small" data-act="export">Export save</button><button class="btn small" data-act="import">Import save</button><button class="btn small ghost" data-act="reset">Roster</button></div></div>`;
     h += `<p class="note">Fan-made, non-commercial prototype. StarCraft and its characters are trademarks of Blizzard Entertainment.</p>`;
   }
   p.innerHTML = h;
@@ -2360,7 +2421,7 @@ $("pane").addEventListener("click", e => {
   if (act === "ascend") confirmBox("Ascend?", "Your level, zones, gear and talents reset. Research, policies and essence carry over.", "Ascend", ascend);
   if (act === "export") openExport();
   if (act === "import") openImport();
-  if (act === "reset") confirmBox("Start a new hero?", "This erases the current hero from this browser. Export a save first if you want to keep it.", "Erase and start over", () => { S = null; try { localStorage.removeItem(KEY); } catch (x) {} $("game").hidden = true; $("create").hidden = false; renderCreate(); });
+  if (act === "reset") openRoster();
   save();
 });
 $("pane").addEventListener("change", e => {
@@ -2372,6 +2433,15 @@ $("pane").addEventListener("change", e => {
 
 /* ---------- modal ---------- */
 function modal(html) { $("modalBody").innerHTML = html; $("modal").hidden = false; }
+$("modal").addEventListener("click", e => {
+  const t = e.target.closest("[data-switch],[data-delete],[data-newhero]"); if (!t) return;
+  if (t.dataset.switch) switchHero(t.dataset.switch);
+  else if (t.dataset.delete) { const h = parkedHeroes().find(x => x.id === t.dataset.delete); confirmBox(`Delete ${h ? esc(h.name) : "this hero"}?`, "This erases that hero from this browser for good. Switch to it and export a save first if you want to keep it.", "Delete", () => deleteHero(t.dataset.delete)); }
+  else if (t.dataset.newhero !== undefined) newHeroFlow();
+});
+$("who").addEventListener("click", openRoster);
+$("who").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openRoster(); } });
+$("backToRoster").addEventListener("click", () => { const parked = parkedHeroes(); if (!parked.length) return; switchHero(parked[0].id); });
 function closeModal() { $("modal").hidden = true; }
 $("modal").addEventListener("click", e => { if (e.target.id === "modal" || e.target.dataset.close !== undefined) closeModal(); });
 let confirmFn = null;
@@ -3022,7 +3092,7 @@ function start(data) {
     startGame();
     if (away > 60 && !(data && data.S)) { const r = simulate(S, Math.min(away, OFFLINE_CAP)); bump(); showAway(r); save(); }
   } else {
-    $("create").hidden = false; renderCreate();
+    $("create").hidden = false; $("backToRoster").hidden = parkedHeroes().length === 0; renderCreate();
   }
   setInterval(frame, 250);
   renderSoundBtn();
