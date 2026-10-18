@@ -22,6 +22,13 @@ watch or while you're away. Personal, non-commercial fan project (StarCraft is B
    (Weapons, Armor, Logistics, Salvage). One talent point per level, 5 talents.
 5. Beating Amon unlocks **Ascension**: reset for Xel'Naga essence (+4% stats/xp each). Research carries over.
 
+## Storylines per race
+Kill targets and counts are shared for balance, but each race hears the campaign from its own side (`STORY` in
+`game.html`, overlaid on the zone data): Terrans follow Raynor, Kerrigan, Zeratul, Tassadar, Raszagal, Valerian and
+Artanis; Protoss follow Tassadar (then "the Heretic"), Fenix, Zeratul, Raszagal and Artanis; Zerg serve the Overmind
+and Cerebrate Daggoth, then Kerrigan's rebellion, with Zagara at Ulnar. Two boss lines change for the Zerg (Zasz and
+Mengsk). Quest titles, briefs, the arrival greeting and the decisions feed all use the race's version.
+
 ## Dungeons, raids and companions
 - 7 companions join as you beat zone bosses: Raynor, Kerrigan, Zeratul (damage), Tassadar, Morales (healers),
   Fenix, Dehaka (tanks). Party = hero + 2. Tanks draw 85% of attacks, healers heal the lowest member.
@@ -143,7 +150,6 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
 
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
-- Race-specific storylines (today every race follows the same quest givers).
 - Music (needs a free track picked by Austin). Per-zone activity schedules and more retreat rules, as in Azeroth Idle.
 - `benilla-re` (shared as a reference) is a WoW 1.12 client reverse-engineering index, likely what
   Azeroth Idle's real-client approach builds on. It isn't needed for a browser game like this one.
