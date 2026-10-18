@@ -77,6 +77,10 @@ heavy about 25% of the time there, measured over four simulated hours) adds plan
 150 s cooldown on top of the need-driven mining. Plans are per hero, validated on load, and shown as a note on the
 current zone's card while a hold is active.
 
+## Guided tour
+
+Austin's feedback after the first play session: there is a lot on the page and you "kinda just hop in", so a tutorial that highlights and walks through the game before play would help. The tour is a spotlight overlay (`#tour`): a dark shade with a cut-out around one part of the page and a card beside it, eleven steps long (welcome, the front line, manual controls, abilities, autopilot, levelling, hero and gear, the tabs, the Quests pane, the decisions feed, leaving). Next, Back, Skip, Esc and the arrow keys drive it; every step scrolls its target into view and the card sits below, above or beside the target, or pinned to the bottom edge on phones. It opens once per browser right after the first hero deploys (`localStorage` flag), or after the away report closes for a save under an hour old that has never seen it. Older saves are not interrupted: they get a one-time tip pointing at the Codex, where "Replay the tour" starts it again. The game keeps running underneath so the first fight plays out while the tour points at it; the hotkeys are muted until it closes and the tip strip hides so two helpers never stack.
+
 ## First-hour tips
 
 A single tip strip under the header shows one tip at a time, each once a condition is met (first kill, first drop, level 2, 2.5 minutes played, boss open, 10 minutes played, level 6) and each dismissed by hand with "Got it". Dismissals live in `S.tips`, so they survive reloads and travel with the hero when it is parked. A save with more than an hour of total play and no `tips` field is treated as a veteran's and skips the tour. The strip is a `role="status"` element, never a modal, so it never blocks play.
@@ -292,6 +296,16 @@ enemies are met far less often than field ones. Run enemies now record a `kind`,
 counter covers both tables (58 entries).
 
 ## Not done yet / ideas
+- Layout density (Austin, 2026-10-18, "don't mess with it for now"): the page needs scrolling at common resolutions, and
+  more of it on screen at once would read better. Ideas when the time comes: a denser header, collapsing the decisions
+  feed into the side panel as a tab, a shorter scene on short viewports, and a compact mode that drops the panel chamfers
+  and padding. Nothing changed yet.
+- Rust with wasm and WebGPU (Austin's thought): it plays nicely together, and it is the right direction if the game grows a
+  real renderer (thousands of sprites, lighting, particles) or a shared simulation that must run identically on a server
+  and in every client. For the game as it is, a single HTML file with a canvas is the better fit: the whole thing is
+  ~3,500 lines, draws a dozen shapes a frame at under 5 ms, and ships by opening a link. The honest trigger for a port is
+  when the canvas becomes the bottleneck or multiplayer needs the simulation in Rust anyway; then compiling the step
+  function to wasm first (and leaving the UI in HTML) gets most of the benefit for a fraction of the rewrite.
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Music (needs a free track picked by Austin). Consumables landed as kits and the retreat rules are flee-at-% and
   fall-back-after-deaths; Azeroth Idle's "avoid packs" has no equivalent here because fights are one enemy at a time.
