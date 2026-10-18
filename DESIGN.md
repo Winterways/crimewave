@@ -56,6 +56,12 @@ Gear, talents and research are chosen by a single `power()` estimate (DPS × √
 Manual mode = autopilot off: you click Engage, fire abilities (buttons or keys 1–3), Rest, challenge
 bosses, equip and spend yourself. The hero still auto-attacks.
 
+## Roster
+Up to three heroes per browser. Click the hero's name in the header (or Roster in the Codex) to switch, add or delete.
+The active hero is saved at the usual key; parked heroes sit at `koprulu-idle-v1-hero-<id>` and do not simulate until you
+switch back, when they catch up like any absence (8-hour cap) and show the away summary. "New hero" parks the current one
+first, so nothing is erased without a confirmed Delete.
+
 ## Offline / background
 On load (or when a backgrounded tab returns) the game simulates the elapsed time, capped at 8 hours,
 with the current policies, then shows a "While you were away" summary.

@@ -7,7 +7,7 @@ non-commercial fan project (StarCraft is Blizzard's IP).
 ## Play in a browser
 
 Open `index.html`. That's the whole game: one file, no server, saves in the browser's local storage (with export/import
-codes under the hero panel). `game.html` is the source; `node build.js` regenerates `index.html` and `dist/index.html`.
+codes in the Codex). Up to three heroes per browser; click the hero's name at the top to switch. `game.html` is the source; `node build.js` regenerates `index.html` and `dist/index.html`.
 
 ## Desktop client (Windows, macOS, Linux)
 
