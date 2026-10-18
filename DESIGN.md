@@ -56,6 +56,10 @@ Gear, talents and research are chosen by a single `power()` estimate (DPS × √
 Manual mode = autopilot off: you click Engage, fire abilities (buttons or keys 1–3), Rest, challenge
 bosses, equip and spend yourself. The hero still auto-attacks.
 
+## First-hour tips
+
+A single tip strip under the header shows one tip at a time, each once a condition is met (first kill, first drop, level 2, 2.5 minutes played, boss open, 10 minutes played, level 6) and each dismissed by hand with "Got it". Dismissals live in `S.tips`, so they survive reloads and travel with the hero when it is parked. A save with more than an hour of total play and no `tips` field is treated as a veteran's and skips the tour. The strip is a `role="status"` element, never a modal, so it never blocks play.
+
 ## Roster
 Up to three heroes per browser. Click the hero's name in the header (or Roster in the Codex) to switch, add or delete.
 The active hero is saved at the usual key; parked heroes sit at `koprulu-idle-v1-hero-<id>` and do not simulate until you
