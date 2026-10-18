@@ -55,6 +55,27 @@ health before abilities. Headless sims of all 9 classes on full autopilot reach 
 5–9 hours of play time, with tankier/faster classes at the quick end. Dungeons usually open up around
 hour 1–2, once a tank or healer companion has joined.
 
+## Professions
+Three skills per hero, levelled by use (max 50), with race-flavoured names:
+- **Mining** (Terran) / Khaydarin Harvesting / Creep Harvesting: a mode instead of fighting. Minerals per second scale
+  with zone and skill, plus Crystal Shards. The autopilot mines when gas is banked but minerals block research, or
+  when crafting is short of shards (policy "Mine when short"). Manual: the Mine button.
+- **Salvaging** / Reclamation / Consumption: every sale also yields Scrap (more with skill); epic+ items may give a Core.
+  Bosses drop Cores. The auto-sell rule now also clears non-upgrades below legendary once the bag is near full.
+- **Engineering** / Forging / Evolution: craft a level+1 item for a chosen slot from Scrap + Shards (+ a Core at the
+  Epic tier). Guaranteed quality rises with skill: Uncommon, Rare at 15, Epic at 30, legendary chance at 45. The
+  autopilot crafts for the weakest slot when it is likely an upgrade or scrap is piling up. Crafting yourself turns
+  the autopilot's crafting off. Combat Stim (shards): +15% damage and health for 10 min; the autopilot pops one
+  before zone bosses and raids. Skills and materials carry over through ascension.
+
+## Reference material from Austin
+- `benilla-re` and `wowdecomp` (SatyPardus) are reverse-engineering projects for the WoW 1.12 and 3.3.5a clients.
+- The Azeroth Idle Windows client he uploaded is a Rust app built on benilla with Bevy UI. Its strings list the
+  policy families it offers: combat, retreat (flee at %, avoid packs), activities per zone, quests (escort/group/item),
+  gathering on the way, bag (sell quality threshold), talents, consumables, crafting, professions, utility (aoe,
+  dispel, interrupt), class-specific, inn/rested, offline cap. Details in `/mnt/project-files/.notes/inputs.md`.
+  Good checklist for where our autopilot could grow (per-zone activity schedules, consumables, retreat rules).
+
 ## Graphics and sound
 All drawn in code, no asset files. A canvas battle scene above the fight panel: a parallax-free painted backdrop per
 zone (dungeons add a tunnel vignette), original vector sprites for every hero class, companion and enemy family
@@ -67,6 +88,6 @@ top; the choice is remembered. Offline catch-up and the autopilot's rehearsals n
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Race-specific storylines (today every race follows the same quest givers).
-- Professions. Music (needs a free track picked by Austin).
+- Music (needs a free track picked by Austin). Per-zone activity schedules and more retreat rules, as in Azeroth Idle.
 - `benilla-re` (shared as a reference) is a WoW 1.12 client reverse-engineering index, likely what
   Azeroth Idle's real-client approach builds on. It isn't needed for a browser game like this one.
