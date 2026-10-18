@@ -293,6 +293,9 @@ counter covers both tables (58 entries).
 
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
-- Music (needs a free track picked by Austin). More retreat rules and consumables, as in Azeroth Idle.
+- Music (needs a free track picked by Austin). Consumables landed as kits and the retreat rules are flee-at-% and
+  fall-back-after-deaths; Azeroth Idle's "avoid packs" has no equivalent here because fights are one enemy at a time.
+- Companion gear or talents, zone hazards (a passive rule per zone), and a Codex page for boss moves are the next
+  content ideas; feats now cover the newer systems (Braced, Aftershock, Hybrid Hunter, Second Wind, Weather Eye).
 - `benilla-re` (shared as a reference) is a WoW 1.12 client reverse-engineering index, likely what
   Azeroth Idle's real-client approach builds on. It isn't needed for a browser game like this one.
