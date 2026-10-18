@@ -605,7 +605,44 @@ const FOE_LORE = {
   "Void Thrasher": "A colossal Void beast that anchors Amon's realm to reality.",
   "Hybrid Dominator": "The apex hybrid: a psionic nightmare that can turn minds and tear ships apart.",
 };
-const LORE_AT = 5;
+const LORE_AT = 5, INST_LORE_AT = 2; // instance enemies are met far less often, so their intel comes sooner
+// Intel on everything met inside dungeons and raids, revealed in the Codex after INST_LORE_AT kills (bosses after one).
+const INSTANCE_LORE = {
+  "Scantid Swarm": "Dozens of scantids driven into the mine shafts by the brood. They go for the ankles.",
+  "Feral Zergling Pack": "Zerglings cut off from the hive mind, running on instinct alone. Hungrier than the rest.",
+  "Tunnel Broodlord": "An over-grown drone strain that seeded the lower galleries. It calls the swarm when it bleeds.",
+  "The Brutalisk": "A one-off strain the Overmind bred for breaking fortifications. Something woke it under Backwater Station.",
+  "Confederate Wraith Crew": "Grounded pilots fighting on foot with their sidearms and a grudge against anyone wearing Mengsk's colours.",
+  "Vault Security Goliath": "An armoured walker on a short patrol loop. Slow to turn, lethal in a corridor.",
+  "Emitter Guardian": "The last of the Confederate ghost program, cloaked and guarding what is left of the psi emitters.",
+  "The Odin": "A prototype super-heavy walker the Confederacy never finished. Someone finished it.",
+  "Hunter Killer Hydralisks": "An elite hydralisk strain with heavier spines and thicker carapace. They hunt in threes.",
+  "Spawning Pool Guardians": "Mutated zerglings that never leave the pool. They heal in the creep.",
+  "Infestor Nest": "A clutch of infestors and the fungal growth they tend. Get too close and your lungs are theirs.",
+  "Daggoth": "Eldest of the cerebrates, commander of the Tiamat Brood. He has outlived two Overminds.",
+  "Broodling Tide": "Hundreds of broodlings spilling from fallen Protoss walls. Each one is small; the tide is not.",
+  "Torrasque": "An ultralisk strain the Swarm can regrow after death. It keeps coming back until the cerebrate dies.",
+  "Guardian Flock": "Floating acid-spitters drifting over Antioch's ruins. They stay out of reach and rain down.",
+  "Defiler Coven": "Defilers soaked in dark swarm, blanketing the field so the brood can close in unseen.",
+  "Kerrigan's Shadow": "A psionic echo of the Queen of Blades left behind on Aiur. It remembers how she fought.",
+  "Temple Sentinel": "Xel'Naga constructs that woke when the temple was disturbed. They do not negotiate.",
+  "Infested Dark Templar": "Nerazim taken by the Swarm, their blades still humming. The worst thing Shakuras has seen.",
+  "Hybrid Spawn": "Immature hybrids, half Protoss and half Zerg. Even unfinished they are stronger than either.",
+  "Samir Duran": "Amon's agent in every uniform the sector has worn. He has been breeding hybrids for a long time.",
+  "Royal Guard Marines": "The Dominion's palace guard in gold-trimmed CMC armour. Better trained than they look.",
+  "Thor Prototype": "A siege walker Mengsk kept under the palace for emergencies. This counts.",
+  "Spectre Detail": "Ghosts turned spectre by terrazine, loyal to no one, holding the deep vaults.",
+  "Gabriel Tosh": "A spectre who walked away from the Dominion and never stopped running his own war.",
+  "Lab Security Team": "Moebius mercenaries with the best gear money and stolen research can buy.",
+  "Hybrid Behemoth": "A hybrid grown to full size in Moebius tanks. It fills the corridor.",
+  "Containment Breach": "Whatever got out of the lower labs. Partly Zerg, partly Protoss, entirely angry.",
+  "Dr. Emil Narud": "Amon's shapeshifting servant, posing as a Moebius scientist for decades.",
+  "Void Templar Host": "Protoss who gave themselves to Amon. Their blades burn with Void energy.",
+  "Hybrid Nemesis": "The perfected hybrid: fast, armoured and psionic. Amon's answer to everything.",
+  "Shadow Swarm": "Zerg remade in the Void, black-carapaced and silent.",
+  "Dark Archon Choir": "Merged Nerazim minds singing Amon's will. Their mind control reaches across the field.",
+  "Avatar of Amon": "A vessel for the fallen Xel'Naga's will, grown from hybrid flesh. Breaking it only delays him.",
+};
 
 // Each race hears the campaign from its own side. Kill targets and counts stay the same; only the voices change.
 // Terran heroes get the base text above (Raynor, Kerrigan, Valerian...). Protoss follow Tassadar, Fenix and Artanis;
@@ -1529,7 +1566,7 @@ function spawnRunFoe(s) {
   const e = boss ? dg.boss : dg.enc[s.run.enc];
   const f = foeStats(L, e, boss);
   const hpM = (dg.raid ? 2.7 : 2.3) * (boss ? 1.6 : 1), atkM = dg.raid ? 1.2 : 1.05;
-  return { name: e.name, title: boss ? dg.boss.title : "", idx: -1, L, hp: f.hp * hpM, max: f.hp * hpM, atk: f.atk * atkM, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss, run: true, raid: !!dg.raid };
+  return { name: e.name, kind: e.name, title: boss ? dg.boss.title : "", idx: -1, L, hp: f.hp * hpM, max: f.hp * hpM, atk: f.atk * atkM, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss, run: true, raid: !!dg.raid };
 }
 function runProgress(s, f) {
   const dg = DUNGEONS[s.run.d];
@@ -2366,12 +2403,18 @@ function renderPane() {
   }
   if (UI.tab === "codex") {
     h += `<div class="card"><h3>${RACES[S.race].name}</h3><p>${RACES[S.race].blurb} ${RACES[S.race].passive}</p></div>`;
-    const fk = S.stats.foeKills || {}, known = Object.values(fk).filter(n => n >= LORE_AT).length;
-    h += `<p class="note">Bestiary: ${known} of ${Object.keys(FOE_LORE).length} entries revealed. Intel unlocks after ${LORE_AT} kills of a kind.</p>`;
+    const fk = S.stats.foeKills || {};
+    const known = Object.keys(FOE_LORE).filter(k => (fk[k] || 0) >= LORE_AT).length + Object.keys(INSTANCE_LORE).filter(k => (fk[k] || 0) >= (DUNGEONS.some(d => d.boss.name === k) ? 1 : INST_LORE_AT)).length;
+    h += `<p class="note">Bestiary: ${known} of ${Object.keys(FOE_LORE).length + Object.keys(INSTANCE_LORE).length} entries revealed. Intel unlocks after ${LORE_AT} kills of a kind in the field, ${INST_LORE_AT} inside instances.</p>`;
     ZONES.forEach((zz, i) => {
       if (!S.seen[i]) return;
       const foes = zz.foes.map(e => { const n = fk[e.name] || 0, open = n >= LORE_AT; return `<div class="beast ${open ? "" : "locked"}"><span><b>${e.name}</b><span class="sub">${open ? FOE_LORE[e.name] || "" : `Intel in ${LORE_AT - n} more kill${LORE_AT - n === 1 ? "" : "s"}.`}</span></span><span class="num">${n}</span></div>`; }).join("");
       h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${foes}${S.bosses[i] ? `<div class="beast"><span><b>${zz.boss.name}</b>, ${zz.boss.title}<span class="sub">${bossLine(S, zz)}</span></span><span class="num">${fk[zz.boss.name] || 0}</span></div>` : ""}</div>`;
+    });
+    DUNGEONS.forEach((dg, i) => {
+      if (!S.bosses[dg.zone]) return;
+      const row = (name, lore, boss) => { const n = fk[name] || 0, need = boss ? 1 : INST_LORE_AT, open = n >= need; return `<div class="beast ${open ? "" : "locked"}"><span><b>${esc(name)}</b>${boss ? `, ${esc(dg.boss.title)}` : ""}<span class="sub">${open ? lore || "" : `Intel in ${need - n} more kill${need - n === 1 ? "" : "s"}.`}</span></span><span class="num">${n}</span></div>`; };
+      h += `<div class="card"><h3>${esc(dg.name)} ${dg.raid ? '<span class="role raidtag">Raid</span>' : ""}</h3><p>${esc(dg.blurb)}</p>${dg.enc.map(e => row(e.name, INSTANCE_LORE[e.name], false)).join("")}${row(dg.boss.name, INSTANCE_LORE[dg.boss.name], true)}</div>`;
     });
     const met = COMPANIONS.filter(c => S.bosses[c.from]);
     if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${{ dps: "Damage", healer: "Healer", tank: "Tank" }[c.role] || c.role}<span class="sub">${c.blurb}</span>${SIGNATURES[c.id] ? `<span class="sub">Signature: ${esc(SIGNATURES[c.id].name)}</span>` : ""}</span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;

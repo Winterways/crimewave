@@ -224,6 +224,11 @@ reveals a line of field intel (24 entries, plus the boss once beaten). Companion
 rank, and the Record card now covers bounties, contracts, events, best streak, minerals mined, items crafted, escapes and
 ascensions. Feats: Xenobiologist (12 entries) and Field Guide (all 24, with a crate). Kill counts carry through ascension.
 
+Instances have their own bestiary: every dungeon and raid the hero has unlocked lists its encounters and boss with kill
+counts, and `INSTANCE_LORE` (34 entries) reveals a line after two kills of a kind, or one for a boss, since instance
+enemies are met far less often than field ones. Run enemies now record a `kind`, so the counts work. The bestiary
+counter covers both tables (58 entries).
+
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Music (needs a free track picked by Austin). More retreat rules and consumables, as in Azeroth Idle.
