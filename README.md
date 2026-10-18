@@ -23,7 +23,8 @@ codes in the Codex). Up to three heroes per browser; click the hero's name at th
   events, bounty elites, kill streaks, ranks, feats, a daily check-in with a streak, and ascension into harder cycles
   with permanent perks.
 - Up to three heroes per browser, offline catch-up of up to eight hours, a Codex with a bestiary and your record, a
-  guided tour on the first deploy (replayable from the Codex), first-hour tip strip, synthesized sound effects and a per-zone ambience bed, all drawn and synthesized in code.
+  guided tour on the first deploy (replayable from the Codex), an autopilot plan card and level forecasts, a dated
+  Chronicle of milestones, zone hazards and companion bond traits, first-hour tip strip, synthesized sound effects and a per-zone ambience bed, all drawn and synthesized in code.
 
 ## Desktop client (Windows, macOS, Linux)
 
