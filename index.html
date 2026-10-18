@@ -1261,9 +1261,15 @@ function heroHit(s, d, mult, forceCrit, ability) {
   return { dmg, crit };
 }
 
+const SHOCK_FOE = 0.35, SHOCK_BOSS = 0.12;
 function fight(s, d, dt) {
   const f = s.foe;
   const b = buffAgg(s);
+  if (s.shock) { // a level-up's surge opens the next fight with a shockwave: a third of an ordinary enemy's health, and a stagger
+    s.shock = false;
+    const dmg = Math.min(f.hp - 1, f.max * (f.boss ? SHOCK_BOSS : SHOCK_FOE)) * (1 - dr(f.def, s.level));
+    if (dmg > 0) { f.hp -= dmg; f.stun = Math.max(f.stun || 0, 1.5); log(s, "a", `Your surge of power staggers ${f.name} for ${fmt(dmg)}.`); fx(s, "shock", { dmg }); }
+  }
   // hero auto-attacks
   s.atkT += dt * d.aspd * (1 + b.aspd);
   while (s.atkT >= 1 && f.hp > 0) { s.atkT -= 1; heroHit(s, d, 1); }
@@ -1436,9 +1442,10 @@ function gainXp(s, xp) {
     // a surge of power for the next 20 seconds, so a level-up is felt in the fight, not only read
     s.buffs = s.buffs.filter(b => b.id !== "surge");
     s.buffs.push({ id: "surge", t: 20, buff: { atk: 0.3, aspd: 0.3 } });
+    s.shock = true; // the next enemy is met with a shockwave
     const small = v => v >= 10 ? fmt(v) : v.toFixed(1); // a Zergling gains 1.7 damage a level; "+0 damage" would be a lie
     const gains = [`+${small(after.atk - before.atk)} damage`, `+${small(after.hp - before.hp)} health`, "+1 talent point"];
-    log(s, "w", `Level up! You are now level ${s.level}. ${gains.join(", ")}. Power surges for 20s.`);
+    log(s, "w", `Level up! You are now level ${s.level}. ${gains.join(", ")}. Power surges for 20s and the next enemy meets a shockwave.`);
     fx(s, "level");
     fx(s, "banner", { lines: [`LEVEL ${s.level}`, gains.join(" · ")], col: "#ffd84a", snd: null });
     if (rankIdx(s.level) > oldRank) {
@@ -2192,7 +2199,7 @@ function hydrate(o) {
   if (!o.tips) o.tips = (o.stats.totalPlayed || 0) > 3600 ? Object.fromEntries(TIPS.map(t => [t.id, 1])) : {}; // veterans skip the tour
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
   o.daily = o.daily && typeof o.daily === "object" ? { last: typeof o.daily.last === "string" ? o.daily.last : "", streak: Math.round(num(o.daily.streak, 0, 0, 100000)), best: Math.round(num(o.daily.best, 0, 0, 100000)) } : { last: "", streak: 0, best: 0 };
-  o.rested = num(o.rested, 0, 0, RESTED_SECS); o.ascendNudged = !!o.ascendNudged;
+  o.rested = num(o.rested, 0, 0, RESTED_SECS); o.ascendNudged = !!o.ascendNudged; o.shock = !!o.shock;
   { const pl = {}; if (o.plan && typeof o.plan === "object") for (const [k, v] of Object.entries(o.plan)) { const z = +k; if (ZONES[z] && v && typeof v === "object") pl[z] = { hold: num(v.hold, 0, 0, MAX_LEVEL), mine: Math.round(num(v.mine, 0, 0, PLAN_MINE.length - 1)) }; } o.plan = pl; }
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5); o.pol.fleeAt = num(o.pol.fleeAt, 20, 5, 60);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -3090,6 +3097,7 @@ function processFx(L) {
       sfx(e.boss ? "boom" : "splat");
     } else if (e.type === "spawn") { R.foe.x = 160 * L.k; R.foe.flash = 0; }
     else if (e.type === "banner") { R.bannerQ[e.first ? "unshift" : "push"]({ lines: e.lines, col: e.col, small: !!e.small, snd: e.snd, wait: e.delay || 0 }); }
+    else if (e.type === "shock") { R.shots.push({ x1: heroX + 24 * L.k, y1: heroY - 30 * L.k, x2: foeX, y2: foeY, life: 1, col: "#ffd84a", kind: "sig" }); burst(foeX, foeY, "#ffd84a", 30, 6); R.foe.flash = 1; R.shake = Math.max(R.shake, .6); addText(foeX, foeY - 70 * L.k, "Shockwave", "#ffd84a", false); addText(foeX + (Math.random() - .5) * 30, foeY - 44 * L.k, fmt(e.dmg), "#ffd84a", true); sfx("boom"); }
     else if (e.type === "level") { burst(heroX, heroY + 30 * L.k, "#c9b04e", 60, 3, 6); R.flash = 1; R.shake = Math.max(R.shake, .5); R.auras.push({ who: "hero", col: "#ffd84a", life: 1, ring: true }); sfx("level"); }
     else if (e.type === "loot") { if (e.rarity >= 2) { addText(foeX, foeY - 70 * L.k, RARITY[e.rarity].name + " loot", ["#9aa5b1", "#5fcf6a", "#4c9bff", "#b484ff", "#ff9a3c"][e.rarity], true); sfx(e.rarity >= 3 ? "epic" : "loot"); } }
     else if (e.type === "shard") { burst(heroX + 40 * L.k, heroY + 30 * L.k, "#7fd8ff", 6, 2, 3); sfx("loot"); }
