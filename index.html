@@ -319,6 +319,20 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .sum .num { font-size: 18px; }
 textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vertical; }
 .float { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--plate-2); border: 1px solid var(--acc); padding: 10px 14px; font-size: 13px; z-index: 30; max-width: min(360px, calc(100vw - 32px)); }
+
+/* guided tour: a spotlight over one part of the page and a card that explains it */
+#tour { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+#tourShade { position: fixed; inset: 0; background: #000000a6; pointer-events: auto; }
+#tourShade.cut { background: transparent; }
+#tourSpot { position: fixed; border: 2px solid var(--acc); box-shadow: 0 0 0 9999px #000000a6, 0 0 24px var(--acc); transition: top .25s, left .25s, width .25s, height .25s; pointer-events: none; }
+#tourCard { position: fixed; width: min(380px, calc(100vw - 32px)); background: var(--plate-2); border: 1px solid var(--acc); border-left: 3px solid var(--acc); padding: 14px 16px; display: grid; gap: 8px; pointer-events: auto; animation: lootin .3s ease-out; max-height: calc(100vh - 32px); overflow-y: auto; }
+#tourCard .label { color: var(--acc); }
+#tourCard h3 { font-size: 18px; color: var(--ink); text-transform: none; letter-spacing: .01em; margin: 0; }
+#tourCard p { margin: 0; font-size: 13px; color: var(--ink); line-height: 1.45; }
+#tourCard p small { display: block; color: var(--mute); margin-top: 4px; }
+#tourCard .btns { justify-content: space-between; align-items: center; margin-top: 4px; }
+#tourCard .btns span { display: flex; gap: 6px; }
+@media (max-width: 520px) { #tourCard { left: 16px !important; right: 16px; width: auto; top: auto !important; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); max-height: 46vh; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -372,7 +386,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
 
   <main class="grid">
     <!-- hero -->
-    <section class="panel">
+    <section class="panel" id="heroPanel">
       <h2>Hero <span class="label" id="hState">—</span></h2>
       <div class="barrow"><div class="lbl"><span>Health</span><span class="num" id="hHp">0</span></div>
         <div class="bar tall" style="--c:var(--hp)"><i id="hHpBar"></i><i class="sh" id="hShBar"></i></div></div>
@@ -399,7 +413,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
       </div>
       <div class="row" style="margin-top:10px"><div class="modeline" id="modeLine" style="margin:0"></div><span class="streak" id="streak" hidden></span><span class="event" id="eventPill" hidden></span></div>
       <div class="abilities" id="abilities"></div>
-      <div class="actions">
+      <div class="actions" id="actions">
         <button class="btn" id="engageBtn" title="Find the next enemy (E)">Engage</button>
         <button class="btn" id="restBtn" title="Rest between fights (R)">Rest</button>
         <button class="btn" id="fleeBtn" hidden title="Break off this fight (F)">Flee</button>
@@ -418,13 +432,14 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
     </section>
   </main>
 
-  <section class="panel">
+  <section class="panel" id="feedPanel">
     <h2>Autopilot decisions <span class="label" id="playTime">0m played</span></h2>
     <div class="feed" id="feed"></div>
   </section>
 </div>
 
 <div id="modal" hidden><div class="panel" id="modalBody"></div></div>
+<div id="tour" hidden role="dialog" aria-label="Guided tour"><div id="tourShade"></div><div id="tourSpot" hidden></div><div id="tourCard"></div></div>
 <div class="float" id="toast" hidden></div>
 <div id="lootStack" aria-live="polite"></div>
 
@@ -1023,6 +1038,7 @@ const streakCap = s => STREAK_MAX + 10 * perk(s, "rhythm");
 
 // First-hour tips, one at a time, each shown once a condition is met and dismissed by hand.
 const TIPS = [
+  { id: "tour", when: () => true, text: "New to the screen? A guided tour that walks through every part of it is in the Codex tab, under Guided tour." },
   { id: "auto", when: s => s.stats.kills >= 1, text: "Autopilot is fighting, resting and equipping for you. Flip the switch at the top right to take the controls; keys 1, 2 and 3 fire abilities, E engages, R rests, M mines, B challenges the boss." },
   { id: "loot", when: s => s.stats.items >= 1, text: "Loot cards at the bottom left show what dropped. Upgrades are equipped for you; the Gear tab holds the rest." },
   { id: "level", when: s => s.level >= 2, text: "Every level grants a talent point and a 20-second Surge. Points are spent for you; the Build tab lets you steer them." },
@@ -1033,7 +1049,7 @@ const TIPS = [
   { id: "ascend", when: s => s.bosses[ZONES.length - 1] && !s.pol.ascend, text: "Amon has fallen and the hero is holding at max level. Ascend from the Quests tab: level, zones, gear and talents reset, but research, perks, companions, professions and policies stay, and you gain essence (+4% to everything each, forever) and a perk point. Auto-ascend in the Autopilot tab does it for you." },
 ];
 function renderTips() {
-  const el = $("tips"); if (!S) { el.hidden = true; return; }
+  const el = $("tips"); if (!S || UI.tour) { el.hidden = true; return; }
   S.tips = S.tips || {};
   const tip = TIPS.find(t => !S.tips[t.id] && t.when(S));
   if (!tip) { el.hidden = true; UI.tip = null; return; }
@@ -2371,6 +2387,7 @@ $("startBtn").addEventListener("click", () => {
   log(S, "w", `${giverOf(S, z)}: "${questText(S, z, 0).d}"`);
   decide(S, "Start", "Autopilot is on. It will fight, rest, equip gear and spend points for you. Switch it off at the top to play manually.");
   dailyCheck(S); save(); startGame();
+  if (!tourSeen()) startTour(); else S.tips.tour = 1;
 });
 $("importBtn").addEventListener("click", () => openImport());
 
@@ -2593,6 +2610,8 @@ function renderPane() {
       <div><span class="label">Check-in streak</span><span class="num">${(S.daily || {}).streak || 0}</span></div><div><span class="label">Best streak of days</span><span class="num">${(S.daily || {}).best || 0}</span></div></div></div>`;
     h += `<div class="card"><h3>Save data</h3><p>Progress saves in this browser every few seconds. Export a save code to move it to another device.</p>
       <div class="btns" style="justify-content:start"><button class="btn small" data-act="export">Export save</button><button class="btn small" data-act="import">Import save</button><button class="btn small ghost" data-act="reset">Roster</button></div></div>`;
+    h += `<div class="card"><h3>Guided tour</h3><p>A one-minute walk through every part of the screen: the front line, the controls, the autopilot, levelling and the tabs.</p>
+      <div class="btns" style="justify-content:start"><button class="btn small" data-act="tour">Replay the tour</button></div></div>`;
     h += `<p class="note">Fan-made, non-commercial prototype. StarCraft and its characters are trademarks of Blizzard Entertainment.</p>`;
   }
   p.innerHTML = h;
@@ -2714,7 +2733,7 @@ function renderLive() {
 /* ---------- events ---------- */
 $("abilities").addEventListener("click", e => { const b = e.target.closest("[data-ab]"); if (b) useAbility(S, +b.dataset.ab, false); });
 document.addEventListener("keydown", e => {
-  if (!S || $("game").hidden || e.target.matches("input, textarea, select")) return;
+  if (!S || $("game").hidden || UI.tour || e.target.matches("input, textarea, select")) return;
   if (["1", "2", "3"].includes(e.key)) useAbility(S, S.loadout[+e.key - 1], false);
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   // manual-play hotkeys mirror the buttons under the scene and respect their disabled state
@@ -2780,6 +2799,7 @@ $("pane").addEventListener("click", e => {
   if (act === "export") openExport();
   if (act === "import") openImport();
   if (act === "reset") openRoster();
+  if (act === "tour") startTour();
   save();
 });
 $("pane").addEventListener("change", e => {
@@ -2806,8 +2826,106 @@ $("who").addEventListener("click", openRoster);
 $("tipOk").addEventListener("click", () => { if (S && UI.tip) { S.tips[UI.tip] = 1; UI.tip = null; $("tips").hidden = true; save(); } });
 $("who").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openRoster(); } });
 $("backToRoster").addEventListener("click", () => { const parked = parkedHeroes(); if (!parked.length) return; switchHero(parked[0].id); });
-function closeModal() { $("modal").hidden = true; }
+function closeModal() { $("modal").hidden = true; if (UI.tourPending) { UI.tourPending = false; startTour(); } }
 $("modal").addEventListener("click", e => { if (e.target.id === "modal" || e.target.dataset.close !== undefined) closeModal(); });
+
+/* ---------- guided tour ----------
+   A spotlight walks a new player around the screen once, right after their first hero deploys. Esc skips it, the
+   arrow keys move through it, and the Codex tab replays it. Existing saves see a one-time tip pointing at the Codex. */
+const TOUR = [
+  { title: "Welcome to the Koprulu Sector", text: s => `Koprulu Idle is an idle RPG. ${esc(s.name)} fights, loots and levels on their own; you set the strategy, or take the controls whenever you like. This tour takes about a minute.`, sub: "Next moves on, Esc skips. Replay it any time from the Codex tab." },
+  { title: "The front line", target: ["#scene", ".arena"], text: s => `${esc(s.name)} stands on the left, the enemy on the right, each with a health bar. The scene above draws every shot and hit, and the log below says what happened and what dropped.` },
+  { title: "Manual controls", target: "#actions", text: () => "Engage finds the next enemy, Rest heals between fights, Mine works the mineral field and Challenge boss opens the fight that unlocks the next zone. The keys E, R, M and B do the same." },
+  { title: "Abilities", target: "#abilities", text: s => `Three abilities from the ${CLASSES[s.cls].name} loadout, on keys 1, 2 and 3. Each costs ${RACES[s.race].res.toLowerCase()} or health and has a cooldown. The autopilot fires them for you until you take over.` },
+  { title: "Autopilot", target: ".autopilot", text: () => "Autopilot is on. It fights, rests, equips better loot, spends talent points and decides when to face a boss. Flip the switch to play by hand; flip it back and it carries on from where you are." },
+  { title: "Levelling up", target: ".xpbox", text: () => "Kills fill the experience bar. Every level is a real jump in power: a 20-second Surge, a shockwave that staggers the next enemy, and a talent point. The first levels come within minutes." },
+  { title: "Hero and gear", target: "#heroPanel", text: () => "Health, energy, stats and five gear slots. Loot that beats what you wear is equipped for you; the rest waits in the Gear tab to be sold for minerals and scrap." },
+  { title: "The tabs", target: "#tabs", text: () => "Quests holds the zone objectives and its boss. Map moves between zones, Dungeons runs instances with companions, and Gear, Build, Research and Crafting are your upgrades. Autopilot sets its rules; Codex keeps records, save codes and this tour." },
+  { title: "Quests", target: "#pane", tab: "quests", text: () => "The chain of objectives in this zone and the boss that guards it. Finish the chain, beat the boss and the Map opens the next zone. Contracts here are short side goals that refill with extra rewards." },
+  { title: "Decisions", target: "#feedPanel", text: () => "Every choice the autopilot makes lands here with its reason, so you can see why it rested, equipped something or challenged a boss, and change its rules on the Autopilot tab." },
+  { title: "You can leave", text: s => `Close the tab whenever you like. ${esc(s.name)} keeps fighting for up to 8 hours while you are away, and a report waits when you return. Short tips will appear above the battle as you reach new things. Good hunting.`, last: true },
+];
+const tourSeen = () => { try { return localStorage.getItem(KEY + "-tour") === "1"; } catch (e) { return false; } };
+function maybeTour() {
+  if (!S || tourSeen()) return;
+  if ((S.stats.totalPlayed || S.stats.played || 0) < 3600) { if ($("modal").hidden) startTour(); else UI.tourPending = true; }
+  else { try { localStorage.setItem(KEY + "-tour", "1"); } catch (e) {} } // veterans get the Codex tip instead
+}
+function startTour() {
+  if (!S || $("game").hidden) return;
+  UI.tour = { i: 0 }; UI.tourPending = false;
+  $("tips").hidden = true;
+  $("tour").hidden = false;
+  tourStep(0);
+}
+function tourStep(i) {
+  const t = UI.tour; if (!t) return;
+  t.i = clamp(i, 0, TOUR.length - 1);
+  const st = TOUR[t.i];
+  if (st.tab && UI.tab !== st.tab) { UI.tab = st.tab; renderStatic(); }
+  $("tourCard").innerHTML = `<span class="label">Guided tour · ${t.i + 1} of ${TOUR.length}</span><h3>${st.title}</h3><p>${st.text(S)}${st.sub ? `<small>${st.sub}</small>` : ""}</p>
+    <div class="btns"><button class="btn small ghost" data-tour="skip">${st.last ? "Close" : "Skip tour"}</button><span>${t.i ? `<button class="btn small" data-tour="back">Back</button>` : ""}<button class="btn small primary" data-tour="next">${st.last ? "Start playing" : "Next"}</button></span></div>`;
+  const targets = tourTargets(st);
+  if (targets.length) {
+    const r = unionRect(targets);
+    const narrow = innerWidth <= 520, want = narrow ? innerHeight * 0.22 : innerHeight / 2 - r.height / 2;
+    if (r.top < 8 || r.bottom > innerHeight - (narrow ? innerHeight * 0.5 : 8) || Math.abs(r.top - want) > innerHeight * 0.4) scrollBy({ top: r.top - want, behavior: "smooth" });
+  }
+  tourPlace();
+}
+function tourTargets(st) {
+  const sel = Array.isArray(st.target) ? st.target : st.target ? [st.target] : [];
+  return sel.map(q => document.querySelector(q)).filter(el => el && el.offsetParent !== null);
+}
+function unionRect(els) {
+  const rs = els.map(el => el.getBoundingClientRect());
+  const l = Math.min(...rs.map(r => r.left)), tp = Math.min(...rs.map(r => r.top)), rt = Math.max(...rs.map(r => r.right)), bt = Math.max(...rs.map(r => r.bottom));
+  return { left: l, top: tp, right: rt, bottom: bt, width: rt - l, height: bt - tp };
+}
+function tourPlace() {
+  const t = UI.tour; if (!t) return;
+  const st = TOUR[t.i], spot = $("tourSpot"), card = $("tourCard"), shade = $("tourShade"), targets = tourTargets(st);
+  const vw = innerWidth, vh = innerHeight, pad = 6;
+  card.style.transform = "";
+  if (!targets.length) {
+    spot.hidden = true; shade.classList.remove("cut");
+    card.style.left = Math.max(16, (vw - card.offsetWidth) / 2) + "px"; card.style.top = Math.max(16, (vh - card.offsetHeight) / 2) + "px";
+    return;
+  }
+  const r = unionRect(targets);
+  spot.hidden = false; shade.classList.add("cut");
+  spot.style.left = (r.left - pad) + "px"; spot.style.top = (r.top - pad) + "px"; spot.style.width = (r.width + pad * 2) + "px"; spot.style.height = (r.height + pad * 2) + "px";
+  if (vw <= 520) return; // the card is pinned to the bottom edge by CSS on phones
+  const cw = card.offsetWidth, ch = card.offsetHeight, gap = 14;
+  let left = clamp(r.left, 16, vw - cw - 16), top;
+  if (r.bottom + gap + ch <= vh - 16) top = r.bottom + gap;
+  else if (r.top - gap - ch >= 16) top = r.top - gap - ch;
+  else if (r.right + gap + cw <= vw - 16) { top = clamp(r.top, 16, vh - ch - 16); left = r.right + gap; }
+  else if (r.left - gap - cw >= 16) { top = clamp(r.top, 16, vh - ch - 16); left = r.left - gap - cw; }
+  else top = clamp(vh - ch - 16, 16, vh - ch - 16);
+  card.style.left = left + "px"; card.style.top = top + "px";
+}
+function endTour() {
+  if (!UI.tour) return;
+  UI.tour = null;
+  $("tour").hidden = true;
+  try { localStorage.setItem(KEY + "-tour", "1"); } catch (e) {}
+  if (S) { S.tips = S.tips || {}; S.tips.tour = 1; save(); }
+}
+$("tour").addEventListener("click", e => {
+  const b = e.target.closest("[data-tour]"); if (!b || !UI.tour) return;
+  if (b.dataset.tour === "skip") endTour();
+  else if (b.dataset.tour === "back") tourStep(UI.tour.i - 1);
+  else if (UI.tour.i >= TOUR.length - 1) endTour(); else tourStep(UI.tour.i + 1);
+});
+document.addEventListener("keydown", e => {
+  if (!UI.tour || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "Escape") { e.preventDefault(); endTour(); }
+  else if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") { e.preventDefault(); if (UI.tour.i >= TOUR.length - 1) endTour(); else tourStep(UI.tour.i + 1); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); tourStep(UI.tour.i - 1); }
+}, true);
+addEventListener("resize", tourPlace);
+addEventListener("scroll", tourPlace, { passive: true });
 let confirmFn = null;
 function confirmBox(title, body, label, fn) {
   confirmFn = fn;
@@ -3529,6 +3647,7 @@ function start(data) {
     startGame();
     if (away > 60 && !(data && data.S)) { const r = simulate(S, Math.min(away, OFFLINE_CAP)); bump(); showAway(r); save(); }
     dailyCheck(S);
+    maybeTour();
   } else {
     $("create").hidden = false; $("backToRoster").hidden = parkedHeroes().length === 0; renderCreate();
   }
