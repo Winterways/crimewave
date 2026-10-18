@@ -55,9 +55,18 @@ health before abilities. Headless sims of all 9 classes on full autopilot reach 
 5–9 hours of play time, with tankier/faster classes at the quick end. Dungeons usually open up around
 hour 1–2, once a tank or healer companion has joined.
 
+## Graphics and sound
+All drawn in code, no asset files. A canvas battle scene above the fight panel: a parallax-free painted backdrop per
+zone (dungeons add a tunnel vignette), original vector sprites for every hero class, companion and enemy family
+(~22 sprite kinds, recoloured per faction), shots, hits, floating damage numbers, ability auras, death bursts,
+level-up fireworks and screen shake on big hits. Inline SVG icons mark gear slots and ability types.
+Sound effects are synthesized with Web Audio (noise bursts and oscillators): weapon fire per class, hits, kills,
+abilities, heals, loot, level-ups and quest turn-ins. Sound starts after the first click and can be toggled at the
+top; the choice is remembered. Offline catch-up and the autopilot's rehearsals never trigger effects.
+
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Race-specific storylines (today every race follows the same quest givers).
-- Professions, art/sprites, sound.
+- Professions. Music (needs a free track picked by Austin).
 - `benilla-re` (shared as a reference) is a WoW 1.12 client reverse-engineering index, likely what
   Azeroth Idle's real-client approach builds on. It isn't needed for a browser game like this one.
