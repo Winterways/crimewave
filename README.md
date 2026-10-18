@@ -1,0 +1,1 @@
+A browser idle RPG set in the StarCraft universe, inspired by Azeroth Idle's "MMORPG that plays itself": you create one hero, set policies, and the hero keeps questing, grinding and levelling while you watch or while you're away. Personal, non-commercial fan project (StarCraft is Blizzard's IP).
