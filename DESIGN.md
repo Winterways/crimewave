@@ -49,6 +49,15 @@ bosses, equip and spend yourself. The hero still auto-attacks.
 On load (or when a backgrounded tab returns) the game simulates the elapsed time, capped at 8 hours,
 with the current policies, then shows a "While you were away" summary.
 
+## Robustness
+- Saves carry a version, are validated and clamped on load (bad numbers, broken items, unknown modes), and a rolling
+  backup copy is written every minute and used if the main save fails to parse.
+- An error inside one simulation step is logged and the current fight dropped instead of freezing the loop.
+- Offline catch-up uses 1-second steps past the first hour; an 8-hour return simulates in about a second.
+- The autopilot gets a decision tick right after rests and kills, and rests up to 92% before a boss or instance it
+  wants to take on. Before this, heroes without self-healing could sit at 50-90% health forever and never meet the
+  "90% health" condition to challenge a boss (the Zealot never reached Amon in 10 h of simulation; now 5.4 h).
+
 ## Balance
 Foes are tuned against a reference hero of the same level, so an even fight is ~7s and costs ~25%
 health before abilities. Headless sims of all 9 classes on full autopilot reach Amon in roughly
