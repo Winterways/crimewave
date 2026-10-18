@@ -287,6 +287,11 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .hero-row .btns { flex-wrap: nowrap; }
 #backToRoster { margin-top: 8px; }
 
+.pol.plan { grid-template-columns: 1fr; margin-top: 8px; }
+.pol.plan .btns { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+.plan .mini { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mute); }
+.plan .mini input { width: 56px; }
+
 /* first-hour tips */
 .tips { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: var(--plate-2); border: 1px solid var(--line); border-left: 3px solid var(--acc); padding: 8px 12px; margin-top: 10px; font-size: 13px; animation: lootin .35s ease-out; }
 .tips b { color: var(--acc); font: 600 11px var(--f-display); letter-spacing: .12em; text-transform: uppercase; margin-right: 8px; }
@@ -961,6 +966,9 @@ const dur = s => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.f
 // The early levels come fast (level 2 in about five kills) and the curve reaches its full steepness at level 12.
 const xpNext = L => Math.floor((70 * Math.pow(L, 1.85) + 90) * Math.min(1, 0.28 + 0.065 * (L - 1)));
 const zoneOf = S => ZONES[S.zone];
+// Zone plans, set on the Map tab: hold the autopilot in a zone until a level, and mine there part of the time.
+const planOf = (s, z) => (s.plan && s.plan[z == null ? s.zone : z]) || { hold: 0, mine: 0 };
+const PLAN_MINE = [{ name: "None", secs: 0 }, { name: "Light (about 10%)", secs: 40 }, { name: "Heavy (about 25%)", secs: 90 }];
 let uid = 1;
 
 /* ============================================================================
@@ -996,7 +1004,7 @@ function newGame(name, race, cls, carry) {
     v: 1, name, race, cls, level: 1, xp: 0, hp: 1e9, en: 60, shield: 0, pshield: 0,
     minerals: 0, gas: 0, essence: carry?.essence || 0, ascensions: carry?.ascensions || 0,
     gear: { weapon: null, armor: null, helm: null, boots: null, implant: null }, bag: [],
-    zone: 0, unlocked: 0, holdUntil: 0, quests: {}, bosses: {}, seen: { 0: true },
+    zone: 0, unlocked: 0, holdUntil: 0, plan: {}, quests: {}, bosses: {}, seen: { 0: true },
     upg: carry?.upg || { weapons: 0, armor: 0, logistics: 0, salvage: 0 },
     tal: Object.fromEntries(TALENTS.map(t => [t.id, 0])), talPts: 0,
     pol: { ...DEFAULT_POL, ...(carry?.pol || {}) },
@@ -1690,12 +1698,17 @@ function autopilot(s, d) {
     const shortShards = P.craft && s.mats.shards < craftCost(s).shards && s.mats.scrap >= craftCost(s).scrap;
     const mc = s.contracts.find(c => c.kind === "mine" && (s.streak < 5 || s.stats.played - c.t0 > 300)); // break a streak for it only after 5 minutes
     const vein = evOn(s, "vein") && s.event.t > 40;
+    const planned = PLAN_MINE[planOf(s).mine] && PLAN_MINE[planOf(s).mine].secs;
     if (wantUpg || shortShards || mc || vein) {
       const need = wantUpg ? wantUpg.min - s.minerals : mc ? mc.n - mc.c : vein ? mineRate(s) * Math.min(90, s.event.t) : 0;
       const secs = clamp(Math.ceil(need / mineRate(s)) + (shortShards ? 30 : 0), 20, 120);
       s.mineCd = s.stats.played + 240;
       decide(s, "Mine", wantUpg ? `Short ${fmt(need)} minerals for research with gas in hand. Mining for ${secs}s.` : shortShards ? `Out of ${PROF_NAMES[s.race].shards} for crafting. Mining for ${secs}s.` : mc ? `Mining contract: ${fmt(need)} minerals to go. Mining for ${secs}s.` : `Rich Vein event: mining pays triple. Mining for ${secs}s.`);
       startMining(s, secs);
+    } else if (planned) {
+      s.mineCd = s.stats.played + 150;
+      decide(s, "Mine", `Zone plan for ${zoneOf(s).name}: mining for ${planned}s.`);
+      startMining(s, planned);
     }
   }
   // 5. supply crates
@@ -1739,9 +1752,10 @@ function autopilot(s, d) {
   // 8. advance
   if (P.advance && s.mode !== "fight") {
     const nz = s.zone + 1;
-    if (nz < ZONES.length && nz <= s.unlocked && s.level >= ZONES[nz].min && s.level >= s.holdUntil && s.bosses[s.zone]) {
+    const held = s.level < s.holdUntil || s.level < (planOf(s).hold || 0);
+    if (nz < ZONES.length && nz <= s.unlocked && s.level >= ZONES[nz].min && !held && s.bosses[s.zone]) {
       travel(s, nz, `${zoneOf(s).name} is cleared and you are level ${s.level}. Moving on to ${ZONES[nz].name}.`);
-    } else if (nz <= s.unlocked && s.level >= s.holdUntil && s.zone < s.unlocked && s.bosses[s.zone] && s.level >= ZONES[s.unlocked].min) {
+    } else if (nz <= s.unlocked && !held && s.zone < s.unlocked && s.bosses[s.zone] && s.level >= ZONES[s.unlocked].min) {
       travel(s, s.unlocked, `Returning to the front line in ${ZONES[s.unlocked].name}.`);
     }
   }
@@ -2062,6 +2076,7 @@ function hydrate(o) {
   o.id = typeof o.id === "string" && o.id ? o.id : Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
   if (!o.tips) o.tips = (o.stats.totalPlayed || 0) > 3600 ? Object.fromEntries(TIPS.map(t => [t.id, 1])) : {}; // veterans skip the tour
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
+  { const pl = {}; if (o.plan && typeof o.plan === "object") for (const [k, v] of Object.entries(o.plan)) { const z = +k; if (ZONES[z] && v && typeof v === "object") pl[z] = { hold: num(v.hold, 0, 0, MAX_LEVEL), mine: Math.round(num(v.mine, 0, 0, PLAN_MINE.length - 1)) }; } o.plan = pl; }
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5); o.pol.fleeAt = num(o.pol.fleeAt, 20, 5, 60);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
   const d = derive(o); o.hp = num(o.hp, d.hp, 0, d.hp);
@@ -2210,7 +2225,9 @@ function renderPane() {
       const open = i <= S.unlocked;
       h += `<div class="card ${i === S.zone ? "cur" : open ? "" : "locked"}"><div class="row"><h3>${zz.name}</h3><span class="num">Lv ${zz.min}–${zz.max}</span></div>
         <p>${open ? zz.blurb : "Defeat the previous zone's boss to unlock."}</p>
-        <div class="row"><span class="label">${S.bosses[i] ? "Cleared" : open ? "Open" : "Locked"}</span>${open && i !== S.zone ? `<button class="btn small" data-travel="${i}">Travel</button>` : i === S.zone ? '<span class="label">You are here</span>' : ""}</div></div>`;
+        <div class="row"><span class="label">${S.bosses[i] ? "Cleared" : open ? "Open" : "Locked"}</span>${open && i !== S.zone ? `<button class="btn small" data-travel="${i}">Travel</button>` : i === S.zone ? '<span class="label">You are here</span>' : ""}</div>
+        ${open ? (pl => `<div class="pol plan"><span><b>Zone plan</b><small>Autopilot: stay here until the level (0 for none) and spend part of the time mining.${i === S.zone && pl.hold > S.level ? ` Holding until level ${pl.hold}.` : ""}</small></span>
+          <span class="btns"><label class="mini">Hold to <input type="number" data-plannum="hold" data-zone="${i}" min="0" max="${MAX_LEVEL}" value="${pl.hold || 0}"></label><select data-plansel="mine" data-zone="${i}">${PLAN_MINE.map((m, k) => `<option value="${k}" ${pl.mine === k ? "selected" : ""}>Mining: ${m.name}</option>`).join("")}</select></span></div>`)(planOf(S, i)) : ""}</div>`;
     });
   }
   if (UI.tab === "dungeons") {
@@ -2356,7 +2373,7 @@ function policiesPane() {
     ${tog("loadout", "Pick abilities", "Slot the strongest three abilities as new ones unlock, keeping one defensive.")}
     ${tog("perks", "Spend ascension perks", "Spread perk points across the perk tree, lowest rank first. Drops a contract that has stalled for 20 minutes either way.")}
     ${tog("dungeons", "Run dungeons and raids", "Rehearse the newest instance three times in its head and go in if it clears two.")}
-    ${tog("advance", "Advance zones", "Move to the next zone once its boss is down and you meet the level.")}
+    ${tog("advance", "Advance zones", "Move to the next zone once its boss is down and you meet the level. Zone plans on the Map tab can hold you in a zone or add mining there.")}
     ${tog("retreat", "Fall back when losing", "After 3 deaths in 5 minutes, farm the previous zone for two levels.")}
     ${tog("ascend", "Auto-ascend", "Ascend as soon as Amon is defeated.")}`;
 }
@@ -2507,6 +2524,11 @@ $("pane").addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.polnum) { const v = parseFloat(t.value); if (!isNaN(v)) S.pol[t.dataset.polnum] = clamp(v, +t.min, +t.max); }
   if (t.dataset.polsel) S.pol[t.dataset.polsel] = +t.value;
+  if (t.dataset.plannum || t.dataset.plansel) {
+    const z = +t.dataset.zone, pl = { ...planOf(S, z) }; S.plan = S.plan || {};
+    if (t.dataset.plannum) { const v = parseInt(t.value, 10); pl[t.dataset.plannum] = isNaN(v) ? 0 : clamp(v, 0, MAX_LEVEL); } else pl[t.dataset.plansel] = clamp(+t.value, 0, PLAN_MINE.length - 1);
+    S.plan[z] = pl; bump();
+  }
   save();
 });
 

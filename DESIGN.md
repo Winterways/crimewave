@@ -71,6 +71,12 @@ Gear, talents and research are chosen by a single `power()` estimate (DPS × √
 Manual mode = autopilot off: you click Engage, fire abilities (buttons or keys 1–3), Rest, challenge
 bosses, equip and spend yourself. The hero still auto-attacks.
 
+Zone plans (Map tab, `S.plan[zone]`) are the per-zone schedule from Azeroth Idle's policy list in its simplest form:
+"hold here until level N" keeps the advance rule from leaving a cleared zone, and a mining share (light about 10%,
+heavy about 25% of the time there, measured over four simulated hours) adds planned mining trips of 40 or 90 s on a
+150 s cooldown on top of the need-driven mining. Plans are per hero, validated on load, and shown as a note on the
+current zone's card while a hold is active.
+
 ## First-hour tips
 
 A single tip strip under the header shows one tip at a time, each once a condition is met (first kill, first drop, level 2, 2.5 minutes played, boss open, 10 minutes played, level 6) and each dismissed by hand with "Got it". Dismissals live in `S.tips`, so they survive reloads and travel with the hero when it is parked. A save with more than an hour of total play and no `tips` field is treated as a veteran's and skips the tour. The strip is a `role="status"` element, never a modal, so it never blocks play.
@@ -199,6 +205,6 @@ ascensions. Feats: Xenobiologist (12 entries) and Field Guide (all 24, with a cr
 
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
-- Music (needs a free track picked by Austin). Per-zone activity schedules and more retreat rules, as in Azeroth Idle.
+- Music (needs a free track picked by Austin). More retreat rules and consumables, as in Azeroth Idle.
 - `benilla-re` (shared as a reference) is a WoW 1.12 client reverse-engineering index, likely what
   Azeroth Idle's real-client approach builds on. It isn't needed for a browser game like this one.
