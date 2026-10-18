@@ -1367,8 +1367,8 @@ function killFoe(s, d) {
   if (f.boss) {
     if (!s.bosses[s.zone]) {
       s.bosses[s.zone] = true; s.stats.bosses++;
-      if (s.zone + 1 < ZONES.length) { s.unlocked = Math.max(s.unlocked, s.zone + 1); log(s, "w", `${ZONES[s.zone + 1].name} is now open.`); }
-      else log(s, "w", "Amon has fallen. Ascension is now available.");
+      if (s.zone + 1 < ZONES.length) { s.unlocked = Math.max(s.unlocked, s.zone + 1); log(s, "w", `${ZONES[s.zone + 1].name} is now open.`); fx(s, "banner", { lines: [`${z.name.toUpperCase()} CLEARED`, `${f.name} defeated · ${ZONES[s.zone + 1].name} is open`], col: "#ffb347", snd: "promote", delay: 1, first: true }); }
+      else { log(s, "w", "Amon has fallen. Ascension is now available."); fx(s, "banner", { lines: ["AMON HAS FALLEN", "The cycle ends. Ascension is open in the Codex."], col: "#ffb347", snd: "promote", delay: 1, first: true }); }
       decide(s, "Boss", `${f.name} defeated.`);
     }
     bump();
@@ -1541,6 +1541,7 @@ function runProgress(s, f) {
     s.stats.runs = (s.stats.runs || 0) + 1; if (dg.raid) s.stats.raids = (s.stats.raids || 0) + 1;
     contractEvent(s, "run", 1);
     log(s, "w", `${dg.name} cleared! +${marks} Valor.`);
+    fx(s, "banner", { lines: [`${dg.raid ? "RAID" : "DUNGEON"} CLEARED`, `${dg.name} · +${marks} Valor`], col: "#9ad9ff", snd: "promote", small: true, delay: 0.8 });
     decide(s, dg.raid ? "Raid" : "Dungeon", `Cleared ${dg.name}. Earned ${marks} Valor.`);
     s.run = null; bump();
   } else log(s, "k", `Encounter ${s.run.enc} of ${dg.enc.length + 1} down.`);
@@ -1604,6 +1605,7 @@ function bossOdds(s, d) {
 }
 function startBoss(s) {
   s.foe = spawnFoe(s, true); s.mode = "fight"; s.atkT = 0; fx(s, "spawn");
+  fx(s, "banner", { lines: [s.foe.name.toUpperCase(), s.foe.title], col: "#ff7b6b", snd: "bounty", small: true });
   log(s, "w", `Engaging ${s.foe.name}, ${s.foe.title}!`);
   bump();
 }
@@ -2993,7 +2995,7 @@ function processFx(L) {
       if (e.boss) R.shake = 1.2;
       sfx(e.boss ? "boom" : "splat");
     } else if (e.type === "spawn") { R.foe.x = 160 * L.k; R.foe.flash = 0; }
-    else if (e.type === "banner") { R.bannerQ.push({ lines: e.lines, col: e.col, small: !!e.small, snd: e.snd, wait: e.delay || 0 }); }
+    else if (e.type === "banner") { R.bannerQ[e.first ? "unshift" : "push"]({ lines: e.lines, col: e.col, small: !!e.small, snd: e.snd, wait: e.delay || 0 }); }
     else if (e.type === "level") { burst(heroX, heroY + 30 * L.k, "#c9b04e", 60, 3, 6); R.flash = 1; R.shake = Math.max(R.shake, .5); R.auras.push({ who: "hero", col: "#ffd84a", life: 1, ring: true }); sfx("level"); }
     else if (e.type === "loot") { if (e.rarity >= 2) { addText(foeX, foeY - 70 * L.k, RARITY[e.rarity].name + " loot", ["#9aa5b1", "#5fcf6a", "#4c9bff", "#b484ff", "#ff9a3c"][e.rarity], true); sfx(e.rarity >= 3 ? "epic" : "loot"); } }
     else if (e.type === "shard") { burst(heroX + 40 * L.k, heroY + 30 * L.k, "#7fd8ff", 6, 2, 3); sfx("loot"); }
@@ -3247,12 +3249,20 @@ function ambStart(zoneId) {
     src.connect(f); f.connect(ng); ng.connect(g); src.start(t); nodes.push(src);
     if (bed.lfo) { const lfo = a.createOscillator(), lg = a.createGain(); lfo.frequency.value = bed.lfo.rate; lg.gain.value = bed.lfo.depth; lfo.connect(lg); lg.connect(f.frequency); lfo.start(t); nodes.push(lfo); }
   }
-  AMB.nodes = nodes; AMB.gain = g; AMB.zone = zoneId;
+  // a slow pulse on the bed's level, silent until a boss fight swells it
+  const lfo = a.createOscillator(), lg = a.createGain(); lfo.type = "sine"; lfo.frequency.value = 1.8; lg.gain.value = 0; lfo.connect(lg); lg.connect(g.gain); lfo.start(t); nodes.push(lfo);
+  AMB.nodes = nodes; AMB.gain = g; AMB.zone = zoneId; AMB.pulse = lg; AMB.boss = false; AMB.at = t;
+}
+function ambBoss(on) {
+  const a = SND.ctx; if (!a || !AMB.gain || AMB.boss === on || a.currentTime < (AMB.at || 0) + 3) return;
+  AMB.boss = on; const t = a.currentTime;
+  AMB.gain.gain.cancelScheduledValues(t); AMB.gain.gain.setValueAtTime(AMB.gain.gain.value, t); AMB.gain.gain.setTargetAtTime(on ? .34 : .2, t, 1.2);
+  AMB.pulse.gain.setTargetAtTime(on ? .09 : 0, t, .8);
 }
 // Called once a second: keeps the bed matching the hero's zone, silent when sound is off, the tab is hidden or nothing is loaded.
 function ambSync() {
   const want = SND.on && AMB.on && !document.hidden && S && !SIMULATING && SND.ctx && SND.ctx.state === "running" ? ZONES[S.zone].id : null;
-  if (want === AMB.zone) return;
+  if (want === AMB.zone) { if (want) ambBoss(!!(S.foe && S.foe.boss && S.mode === "fight")); return; }
   ambStop();
   if (want) ambStart(want);
 }
