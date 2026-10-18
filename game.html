@@ -348,6 +348,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
       <div id="tEssWrap" hidden><span class="label">Xel'Naga</span><span class="num" id="tEss">0</span></div>
     </div>
     <button class="btn small ghost" id="soundBtn" aria-pressed="true">Sound on</button>
+    <button class="btn small ghost" id="ambBtn" aria-pressed="true" title="Zone ambience">Ambience on</button>
     <div class="autopilot">
       <button class="switch" id="apSwitch" role="switch" aria-checked="true" aria-label="Autopilot"></button>
       <div><span class="label">Autopilot</span><div class="ap-state" id="apState">On</div></div>
@@ -2392,6 +2393,7 @@ $("fleeBtn").addEventListener("click", () => flee(S, false));
 $("restBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "seek") { S.mode = "rest"; endStreak(S, "rested"); log(S, "k", "You sit down to rest."); } });
 $("leaveBtn").addEventListener("click", () => leaveRun(S));
 $("soundBtn").addEventListener("click", () => setSound(!SND.on));
+$("ambBtn").addEventListener("click", () => setAmbience(!AMB.on));
 document.addEventListener("click", e => { if (e.target.closest("button") && SND.on) sfx("click"); }, true);
 $("bossBtn").addEventListener("click", () => { if (!$("bossBtn").disabled) startBoss(S); });
 $("apSwitch").addEventListener("click", () => {
@@ -3078,8 +3080,62 @@ function sfx(name) {
   SND.last[name] = now;
   try { SFX[name] && SFX[name](); } catch (e) {}
 }
+/* ---------- zone ambience (looping synthesized beds, one per zone) ---------- */
+const AMB = { on: true, zone: null, gain: null, nodes: [], timer: 0 };
+try { AMB.on = localStorage.getItem(KEY + "-ambient") !== "off"; } catch (e) {}
+// Each bed: drones (oscillators), a noise layer, and a slow LFO that breathes the noise filter.
+const AMBIENCE = {
+  marsara:  { drones: [{ f: 55, type: "sine", vol: .5 }], noise: { filter: "lowpass", freq: 420, q: .7, vol: .55 }, lfo: { rate: .07, depth: 260 } },
+  tarsonis: { drones: [{ f: 60, type: "sawtooth", vol: .18, lp: 180 }, { f: 120.5, type: "sine", vol: .25 }], noise: { filter: "bandpass", freq: 900, q: .5, vol: .22 }, lfo: { rate: .2, depth: 300 } },
+  char:     { drones: [{ f: 38, type: "sine", vol: .7 }, { f: 57, type: "triangle", vol: .22, lp: 120 }], noise: { filter: "lowpass", freq: 220, q: 1.2, vol: .6 }, lfo: { rate: .05, depth: 120 } },
+  aiur:     { drones: [{ f: 220, type: "sine", vol: .22 }, { f: 330.5, type: "sine", vol: .16 }, { f: 440.8, type: "sine", vol: .1 }], noise: { filter: "highpass", freq: 3000, q: .5, vol: .06 }, lfo: { rate: .11, depth: 1200 } },
+  shakuras: { drones: [{ f: 110, type: "triangle", vol: .22, lp: 400 }, { f: 164.8, type: "sine", vol: .15 }], noise: { filter: "lowpass", freq: 350, q: .8, vol: .3 }, lfo: { rate: .06, depth: 200 } },
+  korhal:   { drones: [{ f: 65.4, type: "square", vol: .1, lp: 200 }, { f: 130.8, type: "sine", vol: .2 }], noise: { filter: "bandpass", freq: 1400, q: .7, vol: .14 }, lfo: { rate: .33, depth: 500 } },
+  ulnar:    { drones: [{ f: 261.6, type: "sine", vol: .16 }, { f: 392, type: "sine", vol: .12 }, { f: 523.8, type: "triangle", vol: .06, lp: 900 }], noise: { filter: "highpass", freq: 4500, q: .5, vol: .05 }, lfo: { rate: .09, depth: 2000 } },
+  void:     { drones: [{ f: 55, type: "sawtooth", vol: .14, lp: 160 }, { f: 58.3, type: "sine", vol: .3 }, { f: 82.4, type: "sine", vol: .14 }], noise: { filter: "bandpass", freq: 600, q: 2.5, vol: .3 }, lfo: { rate: .04, depth: 400 } },
+};
+function ambStop(fade = 1.2) {
+  const a = SND.ctx, nodes = AMB.nodes, g = AMB.gain;
+  AMB.nodes = []; AMB.gain = null; AMB.zone = null;
+  if (!a || !g) return;
+  const t = a.currentTime;
+  g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0.0001, t + fade);
+  setTimeout(() => { nodes.forEach(n => { try { n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} }); try { g.disconnect(); } catch (e) {} }, fade * 1000 + 100);
+}
+function ambStart(zoneId) {
+  const a = SND.ctx, bed = AMBIENCE[zoneId]; if (!a || !bed) return;
+  const t = a.currentTime, g = a.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(.2, t + 2.5); g.connect(SND.master);
+  const nodes = [];
+  for (const d of bed.drones) {
+    const o = a.createOscillator(), og = a.createGain(); o.type = d.type; o.frequency.value = d.f; og.gain.value = d.vol;
+    if (d.lp) { const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = d.lp; o.connect(lp); lp.connect(og); } else o.connect(og);
+    og.connect(g); o.start(t); nodes.push(o);
+  }
+  if (bed.noise && SND.noise) {
+    const src = a.createBufferSource(), f = a.createBiquadFilter(), ng = a.createGain();
+    src.buffer = SND.noise; src.loop = true; f.type = bed.noise.filter; f.frequency.value = bed.noise.freq; f.Q.value = bed.noise.q; ng.gain.value = bed.noise.vol;
+    src.connect(f); f.connect(ng); ng.connect(g); src.start(t); nodes.push(src);
+    if (bed.lfo) { const lfo = a.createOscillator(), lg = a.createGain(); lfo.frequency.value = bed.lfo.rate; lg.gain.value = bed.lfo.depth; lfo.connect(lg); lg.connect(f.frequency); lfo.start(t); nodes.push(lfo); }
+  }
+  AMB.nodes = nodes; AMB.gain = g; AMB.zone = zoneId;
+}
+// Called once a second: keeps the bed matching the hero's zone, silent when sound is off, the tab is hidden or nothing is loaded.
+function ambSync() {
+  const want = SND.on && AMB.on && !document.hidden && S && !SIMULATING && SND.ctx && SND.ctx.state === "running" ? ZONES[S.zone].id : null;
+  if (want === AMB.zone) return;
+  ambStop();
+  if (want) ambStart(want);
+}
+function setAmbience(on) { AMB.on = on; try { localStorage.setItem(KEY + "-ambient", on ? "on" : "off"); } catch (e) {} if (on) audioInit(); ambSync(); renderSoundBtn(); }
+setInterval(() => { try { ambSync(); } catch (e) {} }, 1000);
+document.addEventListener("visibilitychange", () => { try { ambSync(); } catch (e) {} });
+
 function setSound(on) { SND.on = on; try { localStorage.setItem(KEY + "-sound", on ? "on" : "off"); } catch (e) {} if (on) { audioInit(); sfx("click"); } renderSoundBtn(); }
-function renderSoundBtn() { const b = $("soundBtn"); if (b) { b.setAttribute("aria-pressed", SND.on); b.textContent = SND.on ? "Sound on" : "Sound off"; } }
+function renderSoundBtn() {
+  const b = $("soundBtn"); if (b) { b.setAttribute("aria-pressed", SND.on); b.textContent = SND.on ? "Sound on" : "Sound off"; }
+  const m = $("ambBtn"); if (m) { m.setAttribute("aria-pressed", AMB.on); m.textContent = AMB.on ? "Ambience on" : "Ambience off"; m.disabled = !SND.on; }
+}
 
 
 /* ============================================================================
