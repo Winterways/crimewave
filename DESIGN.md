@@ -292,10 +292,22 @@ at level 8: rehearsals failed 5 of 5 for several rounds and real wipes followed.
 the forecast and the autopilot's go/no-go include the moves; six-hour sims after the fix: Amon in 2.8–5.1 h, 0–1 deaths,
 the one death a Brutalisk wipe at level 10.
 
+## Forecasts and the plan card
+
+The header's experience bar and the top of the Quests tab say "Level 8 in about 2m 10s at this pace": `step()` keeps `s.xpRate` as an exponential average of experience per second over about ninety seconds and `levelEta()` divides what is left by it. Below that, the Quests tab opens with the autopilot's plan: `planSteps()` reads the same state the rules read (quest progress, boss odds against the margin, the boss-loss marker, zone plans, dungeon readiness) and lists the next steps in order, so a player can see why the hero is still farming or when it will move on. With the autopilot off the card says the plan is theirs; inside an instance it names the encounter. The boss card's margin line is green when the autopilot would go, red below 1x with a note that the boss is likely to win.
+
+## Chronicle
+
+`s.chron` is a dated list of milestones, capped at 60: deployment, each zone boss, every fifth level, every legendary found, the first clear of each instance and each ascension. It is carried through ascension and shown newest first in the Codex. `simulate()` sets `s.simNow` while it runs so entries written during offline catch-up carry the time they would have happened.
+
+## Controls and quality of life
+
+The Codex has a Controls card and `?` opens the same hotkey list in a window; Esc closes any window. Export can download the save as a text file (through the viewer's downloads capability inside claude.ai, where a plain link is blocked, and an ordinary link elsewhere) and Import can open one. The Gear tab sells every non-upgrade in one press. The Quests and Dungeons tabs show a dot when a boss or instance is waiting and the autopilot's rule for it is off. The away report lists the level span, bosses defeated, best find and feats by name under the numbers.
+
 ## Codex and bestiary
 The Codex lists every zone you have seen with its three enemies and your kill count for each; after five kills the entry
 reveals a line of field intel (24 entries, plus the boss once beaten). Companions you have met are listed with their bond
-rank, and the Record card now covers bounties, contracts, events, best streak, minerals mined, items crafted, escapes and
+rank and any active bond trait, every boss entry carries its signature move in one line, and the Record card covers bounties, contracts, events, best streak, minerals mined, items crafted, escapes and
 ascensions. Feats: Xenobiologist (12 entries) and Field Guide (all 24, with a crate). Kill counts carry through ascension.
 
 Instances have their own bestiary: every dungeon and raid the hero has unlocked lists its encounters and boss with kill
