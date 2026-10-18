@@ -977,6 +977,7 @@ const TIPS = [
   { id: "boss", when: s => questState(s, s.zone).i >= ZONES[s.zone].quests.length && !s.bosses[s.zone], text: "The zone boss is open. The autopilot challenges it once your estimated margin is good (see the Autopilot tab), or press Challenge yourself." },
   { id: "away", when: s => s.stats.played >= 600, text: "You can close the tab. The hero keeps fighting for up to 8 hours while you are away, and you get a summary when you return." },
   { id: "roster", when: s => s.level >= 6, text: "Click your hero's name at the top to open the roster: up to three heroes, switch any time." },
+  { id: "ascend", when: s => s.bosses[ZONES.length - 1] && !s.pol.ascend, text: "Amon has fallen and the hero is holding at max level. Ascend from the Quests tab: level, zones, gear and talents reset, but research, perks, companions, professions and policies stay, and you gain essence (+4% to everything each, forever) and a perk point. Auto-ascend in the Autopilot tab does it for you." },
 ];
 function renderTips() {
   const el = $("tips"); if (!S) { el.hidden = true; return; }
@@ -1053,7 +1054,7 @@ function newGame(name, race, cls, carry) {
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
     streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
-    event: null, nextEvent: 600 + rnd() * 300, tips: {}, daily: carry?.daily || { last: "", streak: 0, best: 0 }, rested: 0,
+    event: null, nextEvent: 600 + rnd() * 300, tips: { ...(carry?.tips || {}) }, daily: carry?.daily || { last: "", streak: 0, best: 0 }, rested: 0,
     id: Date.now().toString(36) + Math.floor(rnd() * 1e6).toString(36),
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0, kits: carry?.kits || 0, kitCd: 0,
     deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, foeKills: carry.stats.foeKills, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
@@ -1364,7 +1365,7 @@ function killFoe(s, d) {
   if (f.boss) { const n = f.raid ? 3 : f.run ? 2 : 1; s.mats.cores += n; log(s, "w", `+${n} ${PROF_NAMES[s.race].cores}.`); }
   else if (rnd() < 0.08) { s.mats.shards += 1 + Math.floor(f.L / 15); }
   s.stats.kills++;
-  log(s, "g", `${f.name} destroyed. +${fmt(xp)} xp, +${fmt(min)} minerals${gas ? `, +${gas} gas` : ""}.`);
+  log(s, "g", `${f.name} destroyed. ${s.level >= MAX_LEVEL ? "" : `+${fmt(xp)} xp, `}+${fmt(min)} minerals${gas ? `, +${gas} gas` : ""}.`);
   contractEvent(s, "xp", xp);
   if (f.boss) contractEvent(s, "boss", 1);
   if (f.elite) contractEvent(s, "bounty", 1);
@@ -1401,7 +1402,7 @@ function killFoe(s, d) {
     if (!s.bosses[s.zone]) {
       s.bosses[s.zone] = true; s.stats.bosses++;
       if (s.zone + 1 < ZONES.length) { s.unlocked = Math.max(s.unlocked, s.zone + 1); log(s, "w", `${ZONES[s.zone + 1].name} is now open.`); fx(s, "banner", { lines: [`${z.name.toUpperCase()} CLEARED`, `${f.name} defeated · ${ZONES[s.zone + 1].name} is open`], col: "#ffb347", snd: "promote", delay: 1, first: true }); }
-      else { log(s, "w", "Amon has fallen. Ascension is now available."); fx(s, "banner", { lines: ["AMON HAS FALLEN", "The cycle ends. Ascension is open in the Codex."], col: "#ffb347", snd: "promote", delay: 1, first: true }); }
+      else { log(s, "w", "Amon has fallen. Ascension is open in the Quests tab."); fx(s, "banner", { lines: ["AMON HAS FALLEN", "The cycle ends. Ascension is open in the Quests tab."], col: "#ffb347", snd: "promote", delay: 1, first: true }); }
       decide(s, "Boss", `${f.name} defeated.`);
     }
     bump();
@@ -1813,6 +1814,7 @@ function autopilot(s, d) {
   }
   // 9. ascend
   if (P.ascend && s === S && s.bosses[ZONES.length - 1]) ascend(); // ascend() rebuilds the live hero, so rehearsal copies never do it
+  else if (s === S && !SIMULATING && s.bosses[ZONES.length - 1] && !s.ascendNudged) { s.ascendNudged = true; decide(s, "Ascend", "Amon is dead. Holding at max level until you Ascend (Quests tab) or turn on Auto-ascend."); }
 }
 
 /* ---------- contracts ---------- */
@@ -2028,7 +2030,7 @@ function ascend() {
   if (!S.bosses[ZONES.length - 1]) return;
   if (S.run) leaveRun(S);
   const gain = ascendGain(S);
-  const carry = { daily: S.daily, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, kits: S.kits, feats: S.feats, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
+  const carry = { daily: S.daily, tips: S.tips, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, kits: S.kits, feats: S.feats, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
   S = newGame(S.name, S.race, S.cls, carry);
   log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience) and a perk point.`);
   fx(S, "banner", { lines: [`ASCENSION ${S.ascensions}`, `+${gain} essence · 1 perk point`], col: "#c06cff", snd: "promote" });
@@ -2177,7 +2179,7 @@ function hydrate(o) {
   if (!o.tips) o.tips = (o.stats.totalPlayed || 0) > 3600 ? Object.fromEntries(TIPS.map(t => [t.id, 1])) : {}; // veterans skip the tour
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
   o.daily = o.daily && typeof o.daily === "object" ? { last: typeof o.daily.last === "string" ? o.daily.last : "", streak: Math.round(num(o.daily.streak, 0, 0, 100000)), best: Math.round(num(o.daily.best, 0, 0, 100000)) } : { last: "", streak: 0, best: 0 };
-  o.rested = num(o.rested, 0, 0, RESTED_SECS);
+  o.rested = num(o.rested, 0, 0, RESTED_SECS); o.ascendNudged = !!o.ascendNudged;
   { const pl = {}; if (o.plan && typeof o.plan === "object") for (const [k, v] of Object.entries(o.plan)) { const z = +k; if (ZONES[z] && v && typeof v === "object") pl[z] = { hold: num(v.hold, 0, 0, MAX_LEVEL), mine: Math.round(num(v.mine, 0, 0, PLAN_MINE.length - 1)) }; } o.plan = pl; }
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5); o.pol.fleeAt = num(o.pol.fleeAt, 20, 5, 60);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -2301,6 +2303,7 @@ function renderPane() {
   const p = $("pane"), z = zoneOf(S);
   let h = "";
   if (UI.tab === "quests") {
+    if (S.bosses[ZONES.length - 1]) h += ascendCard();
     ensureContracts(S);
     const canSkip = S.stats.played >= (S.skipAt || 0);
     h += `<div class="row"><h3 class="label">Contracts</h3><span class="note">${canSkip ? "One skip ready" : `Next skip in ${dur(S.skipAt - S.stats.played)}`} · ${S.stats.contracts || 0} completed</span></div>`;
@@ -2321,7 +2324,6 @@ function renderPane() {
     });
     const ready = q.i >= z.quests.length;
     h += `<div class="card ${S.bosses[S.zone] ? "done" : ready ? "cur" : "locked"}"><div class="row"><h3>Boss · ${z.boss.name}</h3><span class="label">${S.bosses[S.zone] ? "Defeated" : ready ? "Ready" : "Locked"}</span></div><p>${bossLine(S, z)}</p>${ready && !S.bosses[S.zone] ? `<p>Your estimated margin: <span class="num">${bossOdds(S, derive(S)).toFixed(2)}x</span>. Autopilot engages at ${S.pol.bossMargin}x.</p>` : ""}</div>`;
-    if (S.bosses[ZONES.length - 1]) h += ascendCard();
   }
   if (UI.tab === "map") {
     ZONES.forEach((zz, i) => {
@@ -2459,7 +2461,7 @@ function renderPane() {
   p.innerHTML = h;
 }
 function ascendCard() {
-  return `<div class="card cur"><h3>Ascension</h3><p>Reset your level, zones, gear and talents. Keep research and policies. Gain <span class="num">${ascendGain(S)}</span> Xel'Naga essence, each worth +4% damage, health and experience forever, plus one perk point (see Build).</p><div class="btns" style="justify-content:start"><button class="btn small primary" data-act="ascend">Ascend</button></div></div>`;
+  return `<div class="card cur"><h3>Ascension${S.ascensions ? ` · ${S.ascensions} so far` : ""}</h3><p>Amon has fallen and ${esc(S.name)} is holding at max level. Ascending resets level, zones, gear and talents; research, perks, companions, professions, kits, feats and policies stay${perk(S, "headstart") ? `, and Head Start begins the next cycle at level ${5 * perk(S, "headstart")}` : ""}. Gain <span class="num">${ascendGain(S)}</span> Xel'Naga essence, each worth +4% damage, health and experience forever (${S.essence ? `${S.essence} held now, ` : ""}${S.essence + ascendGain(S)} after), plus one perk point (see Build).</p><div class="btns" style="justify-content:start"><button class="btn small primary" data-act="ascend">Ascend</button></div></div>`;
 }
 function policiesPane() {
   const P = S.pol;
@@ -2704,6 +2706,7 @@ function showAway(r) {
       <div><span class="label">Best streak</span><span class="num">${r.streak}</span></div>
     </div>
     ${r.drop ? `<p class="note" style="color:${RCOL[r.drop.rarity]}">${icon(slotIcon(r.drop.slot, S.race), RCOL[r.drop.rarity], 14)} A supply drop was waiting: <b>${esc(r.drop.name)}</b> (${RARITY[r.drop.rarity].name} ${SLOT_LABEL[r.drop.slot].toLowerCase()}). Come back after 4 hours or more for another.</p>` : ""}
+    ${S.bosses[ZONES.length - 1] && !S.pol.ascend ? `<p class="note">Amon is dead and the hero is holding at max level. Ascend from the Quests tab, or turn on Auto-ascend in the Autopilot tab.</p>` : ""}
     ${r.zone ? `<p class="note">Now fighting in ${r.zone}.</p>` : ""}${r.deaths ? `<p class="note">Fell ${r.deaths} time${r.deaths > 1 ? "s" : ""} along the way.</p>` : ""}
     <div class="btns"><button class="btn primary" data-close>Continue</button></div>`);
 }
