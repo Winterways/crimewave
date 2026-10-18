@@ -315,6 +315,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vertical; }
 .float { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--plate-2); border: 1px solid var(--acc); padding: 10px 14px; font-size: 13px; z-index: 30; max-width: min(360px, calc(100vw - 32px)); }
 
+kbd { font: 600 11px var(--f-mono); background: var(--plate); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; color: var(--ink); }
+.keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 13px; }
+.keys span { display: flex; gap: 8px; align-items: center; }
+b.good { color: var(--good); } b.bad { color: var(--hp); }
 /* guided tour: a spotlight over one part of the page and a card that explains it */
 #tour { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
 #tourShade { position: fixed; inset: 0; background: #000000a6; pointer-events: auto; }
@@ -760,6 +764,16 @@ const BOSS_MOVES = {
   "Avatar of Amon": { name: "Void Rift", every: 18, kind: "slam", mult: 3 },
 };
 const bossMove = f => f && f.boss ? BOSS_MOVES[f.name] : null;
+// One line per signature move for the Codex and the boss card.
+function moveDesc(mv) {
+  const every = `every ${mv.every}s, telegraphed ${TELEGRAPH}s ahead`;
+  if (mv.kind === "heal") return `heals ${Math.round(mv.heal * 100)}% of its health ${every}`;
+  if (mv.kind === "enrage") return `+${Math.round(mv.atk * 100)}% damage for ${mv.dur}s ${every}`;
+  if (mv.kind === "drain") return `a ${mv.mult}x hit that also drains ${mv.energy} energy ${every}`;
+  return `a ${mv.mult}x hit ${every}; a shield, dodge or tank companion answers it`;
+}
+const KEYS = [["1 2 3", "abilities"], ["E", "engage"], ["R", "rest"], ["F", "flee"], ["K", "kit"], ["M", "mine"], ["B", "challenge the boss"], ["L", "leave the instance"], ["Esc", "close a window"], ["?", "this list"]];
+function openKeys() { modal(`<h2>Controls</h2><p class="note">Hotkeys work whenever the game is on screen and no text box has focus. The autopilot uses none of them; they are yours.</p><div class="keys">${KEYS.map(([k, d]) => `<span><kbd>${k}</kbd>${d}</span>`).join("")}</div><div class="btns"><button class="btn primary" data-close>Done</button></div>`); }
 
 // Abilities 4-6 per class unlock at levels 10 / 20 / 30. Three can be slotted at once.
 const EXTRA_ABILITIES = {
@@ -1264,6 +1278,8 @@ function step(s, dt) {
   const d = derive(s);
   s.stats.played += dt;
   s.stats.totalPlayed = (s.stats.totalPlayed || 0) + dt;
+  // experience per second, smoothed over about a minute and a half, for the "next level in" forecast
+  s.xpRate = (s.xpRate || 0) + ((s.xpAcc || 0) / dt - (s.xpRate || 0)) * Math.min(1, dt / 90); s.xpAcc = 0;
   eventTick(s, dt);
   s.sinceHit += dt;
   if (s.stim > 0) { s.stim -= dt; if (s.stim <= 0) { s.stim = 0; log(s, "k", `${PROF_NAMES[s.race].stim} wore off.`); bump(); } }
@@ -1521,7 +1537,7 @@ function killFoe(s, d) {
 function gainXp(s, xp) {
   if (s.level >= MAX_LEVEL) return;
   if (s.rested > 0) xp *= 1 + RESTED_XP;
-  s.xp += xp;
+  s.xp += xp; s.xpAcc = (s.xpAcc || 0) + xp;
   while (s.level < MAX_LEVEL && s.xp >= xpNext(s.level)) {
     const before = derive(s), oldRank = rankIdx(s.level);
     s.xp -= xpNext(s.level); s.level++; s.talPts++;
@@ -1736,6 +1752,11 @@ function bestLoadout(s) {
 function itemGain(s, it) {
   const g = { ...s.gear, [it.slot]: it };
   return power(s, { gear: g }) / power(s) - 1;
+}
+// "Level 8 in about 3m" at the current pace, or nothing while the pace is unknown or the hero is at the cap.
+function levelEta(s) {
+  if (s.level >= MAX_LEVEL || !(s.xpRate > 0.01)) return null;
+  return Math.max(1, (xpNext(s.level) - s.xp) / s.xpRate);
 }
 function bossOdds(s, d) {
   const z = zoneOf(s), f = foeStats(z.max, z.boss, true, s);
@@ -2447,6 +2468,7 @@ function renderPane() {
   let h = "";
   if (UI.tab === "quests") {
     if (S.bosses[ZONES.length - 1]) h += ascendCard();
+    { const eta = levelEta(S); if (eta) h += `<p class="note">Level <span class="num">${S.level + 1}</span> in about <span class="num">${dur(eta)}</span> at this pace.</p>`; }
     ensureContracts(S);
     const canSkip = S.stats.played >= (S.skipAt || 0);
     h += `<div class="row"><h3 class="label">Contracts</h3><span class="note">${canSkip ? "One skip ready" : `Next skip in ${dur(S.skipAt - S.stats.played)}`} · ${S.stats.contracts || 0} completed</span></div>`;
@@ -2466,7 +2488,9 @@ function renderPane() {
       h += `<div class="card ${state}"><div class="row"><h3>${qt.t}</h3><span class="num">${prog}/${qd.n}</span></div><p>${qt.d}</p><p>Defeat ${qd.n} × ${target}.</p></div>`;
     });
     const ready = q.i >= z.quests.length;
-    h += `<div class="card ${S.bosses[S.zone] ? "done" : ready ? "cur" : "locked"}"><div class="row"><h3>Boss · ${z.boss.name}</h3><span class="label">${S.bosses[S.zone] ? "Defeated" : ready ? "Ready" : "Locked"}</span></div><p>${bossLine(S, z)}${BOSS_MOVES[z.boss.name] ? ` Signature: <b>${BOSS_MOVES[z.boss.name].name}</b>, telegraphed ${TELEGRAPH}s ahead.` : ""}</p>${ready && !S.bosses[S.zone] ? `<p>Your estimated margin: <span class="num">${bossOdds(S, derive(S)).toFixed(2)}x</span>. Autopilot engages at ${S.pol.bossMargin}x.</p>` : ""}</div>`;
+    const margin = ready && !S.bosses[S.zone] && !S.run ? bossOdds(S, derive(S)) : 0;
+    const marginNote = margin ? `Your estimated survival margin: <b class="${margin >= S.pol.bossMargin ? "good" : margin >= 1 ? "" : "bad"}">${margin.toFixed(2)}x</b>. ${S.pol.autopilot && S.pol.boss ? `The autopilot engages at ${S.pol.bossMargin}x.` : margin < 1 ? "Below 1x the boss is likely to win." : "Above 1x you are favoured."}` : "";
+    h += `<div class="card ${S.bosses[S.zone] ? "done" : ready ? "cur" : "locked"}"><div class="row"><h3>Boss · ${z.boss.name}</h3><span class="label">${S.bosses[S.zone] ? "Defeated" : ready ? "Ready" : "Locked"}</span></div><p>${bossLine(S, z)}${BOSS_MOVES[z.boss.name] ? ` Signature: <b>${BOSS_MOVES[z.boss.name].name}</b>, telegraphed ${TELEGRAPH}s ahead.` : ""}</p>${marginNote ? `<p>${marginNote}</p>` : ""}</div>`;
   }
   if (UI.tab === "map") {
     ZONES.forEach((zz, i) => {
@@ -2583,11 +2607,11 @@ function renderPane() {
     ZONES.forEach((zz, i) => {
       if (!S.seen[i]) return;
       const foes = zz.foes.map(e => { const n = fk[e.name] || 0, open = n >= LORE_AT; return `<div class="beast ${open ? "" : "locked"}"><span><b>${e.name}</b><span class="sub">${open ? FOE_LORE[e.name] || "" : `Intel in ${LORE_AT - n} more kill${LORE_AT - n === 1 ? "" : "s"}.`}</span></span><span class="num">${n}</span></div>`; }).join("");
-      h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${foes}${S.bosses[i] ? `<div class="beast"><span><b>${zz.boss.name}</b>, ${zz.boss.title}<span class="sub">${bossLine(S, zz)}</span></span><span class="num">${fk[zz.boss.name] || 0}</span></div>` : ""}</div>`;
+      h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${foes}${S.bosses[i] ? `<div class="beast"><span><b>${zz.boss.name}</b>, ${zz.boss.title}<span class="sub">${bossLine(S, zz)}</span>${BOSS_MOVES[zz.boss.name] ? `<span class="sub">Signature: ${esc(BOSS_MOVES[zz.boss.name].name)} · ${moveDesc(BOSS_MOVES[zz.boss.name])}</span>` : ""}</span><span class="num">${fk[zz.boss.name] || 0}</span></div>` : ""}</div>`;
     });
     DUNGEONS.forEach((dg, i) => {
       if (!S.bosses[dg.zone]) return;
-      const row = (name, lore, boss) => { const n = fk[name] || 0, need = boss ? 1 : INST_LORE_AT, open = n >= need; return `<div class="beast ${open ? "" : "locked"}"><span><b>${esc(name)}</b>${boss ? `, ${esc(dg.boss.title)}` : ""}<span class="sub">${open ? lore || "" : `Intel in ${need - n} more kill${need - n === 1 ? "" : "s"}.`}</span></span><span class="num">${n}</span></div>`; };
+      const row = (name, lore, boss) => { const n = fk[name] || 0, need = boss ? 1 : INST_LORE_AT, open = n >= need; return `<div class="beast ${open ? "" : "locked"}"><span><b>${esc(name)}</b>${boss ? `, ${esc(dg.boss.title)}` : ""}<span class="sub">${open ? lore || "" : `Intel in ${need - n} more kill${need - n === 1 ? "" : "s"}.`}</span>${open && boss && BOSS_MOVES[name] ? `<span class="sub">Signature: ${esc(BOSS_MOVES[name].name)} · ${moveDesc(BOSS_MOVES[name])}</span>` : ""}</span><span class="num">${n}</span></div>`; };
       h += `<div class="card"><h3>${esc(dg.name)} ${dg.raid ? '<span class="role raidtag">Raid</span>' : ""}</h3><p>${esc(dg.blurb)}</p>${dg.enc.map(e => row(e.name, INSTANCE_LORE[e.name], false)).join("")}${row(dg.boss.name, INSTANCE_LORE[dg.boss.name], true)}</div>`;
     });
     const met = COMPANIONS.filter(c => S.bosses[c.from]);
@@ -2603,6 +2627,7 @@ function renderPane() {
       <div><span class="label">Check-in streak</span><span class="num">${(S.daily || {}).streak || 0}</span></div><div><span class="label">Best streak of days</span><span class="num">${(S.daily || {}).best || 0}</span></div></div></div>`;
     h += `<div class="card"><h3>Save data</h3><p>Progress saves in this browser every few seconds. Export a save code to move it to another device.</p>
       <div class="btns" style="justify-content:start"><button class="btn small" data-act="export">Export save</button><button class="btn small" data-act="import">Import save</button><button class="btn small ghost" data-act="reset">Roster</button></div></div>`;
+    h += `<div class="card"><h3>Controls</h3><p>${KEYS.map(([k, d]) => `<kbd>${k}</kbd> ${d}`).join(" · ")}</p><p>Press <kbd>?</kbd> any time for this list.</p></div>`;
     h += `<div class="card"><h3>Guided tour</h3><p>A one-minute walk through every part of the screen: the front line, the controls, the autopilot, levelling and the tabs.</p>
       <div class="btns" style="justify-content:start"><button class="btn small" data-act="tour">Replay the tour</button></div></div>`;
     h += `<p class="note">Fan-made, non-commercial prototype. StarCraft and its characters are trademarks of Blizzard Entertainment.</p>`;
@@ -2652,6 +2677,7 @@ function renderLive() {
   $("tXp").textContent = S.level >= MAX_LEVEL ? "Max level" : `${fmt(S.xp)} / ${fmt(need)}`;
   $("tXpBar").style.width = (S.level >= MAX_LEVEL ? 100 : S.xp / need * 100) + "%";
   $("tXpWrap").classList.toggle("hot", S.level < MAX_LEVEL && S.xp / need > 0.85);
+  { const eta = levelEta(S); $("tXpWrap").title = eta ? `Level ${S.level + 1} in about ${dur(eta)} at this pace` : S.level >= MAX_LEVEL ? "Max level" : "Experience to the next level"; }
   const ev = S.event && EVENTS.find(x => x.id === S.event.id), evEl = $("eventPill"); evEl.hidden = !ev;
   if (ev) { evEl.style.setProperty("--ev", ev.col); evEl.innerHTML = `${ev.name}<span class="num">${Math.ceil(S.event.t)}s</span>`; evEl.title = ev.desc; }
   renderTips();
@@ -2731,6 +2757,8 @@ document.addEventListener("keydown", e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   // manual-play hotkeys mirror the buttons under the scene and respect their disabled state
   const k = e.key.toLowerCase(), press = id => { const b = $(id); if (b && !b.hidden && !b.disabled) { b.click(); e.preventDefault(); } };
+  if (e.key === "?") { e.preventDefault(); if ($("modal").hidden) openKeys(); else closeModal(); return; }
+  if (e.key === "Escape" && !$("modal").hidden) { closeModal(); return; }
   if (k === "e") press("engageBtn"); else if (k === "r") press("restBtn"); else if (k === "f") press("fleeBtn"); else if (k === "m") press("mineBtn"); else if (k === "b") press("bossBtn"); else if (k === "l") press("leaveBtn"); else if (k === "k") press("kitBtn");
 });
 $("engageBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "rest" || S.mode === "mine") { S.mode = "seek"; S.timer = 0.5; delete S.mineFor; } });
