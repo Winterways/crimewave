@@ -2165,7 +2165,7 @@ function renderPane() {
       h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${foes}${S.bosses[i] ? `<div class="beast"><span><b>${zz.boss.name}</b>, ${zz.boss.title}<span class="sub">${bossLine(S, zz)}</span></span><span class="num">${fk[zz.boss.name] || 0}</span></div>` : ""}</div>`;
     });
     const met = COMPANIONS.filter(c => S.bosses[c.from]);
-    if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${c.role}<span class="sub">${c.blurb}</span></span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
+    if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${{ dps: "Damage", healer: "Healer", tank: "Tank" }[c.role] || c.role}<span class="sub">${c.blurb}</span></span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
     h += `<div class="card"><h3>Record</h3><div class="sum">
       <div><span class="label">Kills</span><span class="num">${fmt(S.stats.kills)}</span></div><div><span class="label">Bosses</span><span class="num">${S.stats.bosses}</span></div>
       <div><span class="label">Instances</span><span class="num">${S.stats.runs || 0}</span></div><div><span class="label">Deaths</span><span class="num">${S.stats.deaths}</span></div>
