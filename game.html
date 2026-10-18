@@ -286,6 +286,11 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .hero-row .btns { flex-wrap: nowrap; }
 #backToRoster { margin-top: 8px; }
 
+/* first-hour tips */
+.tips { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: var(--plate-2); border: 1px solid var(--line); border-left: 3px solid var(--acc); padding: 8px 12px; margin-top: 10px; font-size: 13px; animation: lootin .35s ease-out; }
+.tips b { color: var(--acc); font: 600 11px var(--f-display); letter-spacing: .12em; text-transform: uppercase; margin-right: 8px; }
+.tips .btn { flex: none; }
+
 /* decisions feed */
 .feed { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; font-size: 13px; }
 .feed p { margin: 0; display: grid; grid-template-columns: 74px 92px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -348,6 +353,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
       <div><span class="label">Autopilot</span><div class="ap-state" id="apState">On</div></div>
     </div>
   </header>
+  <div class="tips" id="tips" hidden role="status"><span><b>Tip</b><span id="tipText"></span></span><button class="btn small" id="tipOk">Got it</button></div>
 
   <main class="grid">
     <!-- hero -->
@@ -885,6 +891,24 @@ const PERKS = [
 const perk = (s, id) => (s.perks && s.perks[id]) || 0;
 const streakCap = s => STREAK_MAX + 10 * perk(s, "rhythm");
 
+// First-hour tips, one at a time, each shown once a condition is met and dismissed by hand.
+const TIPS = [
+  { id: "auto", when: s => s.stats.kills >= 1, text: "Autopilot is fighting, resting and equipping for you. Flip the switch at the top right to take the controls; keys 1, 2 and 3 fire abilities." },
+  { id: "loot", when: s => s.stats.items >= 1, text: "Loot cards at the bottom left show what dropped. Upgrades are equipped for you; the Gear tab holds the rest." },
+  { id: "level", when: s => s.level >= 2, text: "Every level grants a talent point and a 20-second Surge. Points are spent for you; the Build tab lets you steer them." },
+  { id: "contracts", when: s => s.stats.played >= 150, text: "Contracts in the Quests tab are short goals with rewards. A finished slot refills every 8 minutes, so there is always a next one." },
+  { id: "boss", when: s => questState(s, s.zone).i >= ZONES[s.zone].quests.length && !s.bosses[s.zone], text: "The zone boss is open. The autopilot challenges it once your estimated margin is good (see the Autopilot tab), or press Challenge yourself." },
+  { id: "away", when: s => s.stats.played >= 600, text: "You can close the tab. The hero keeps fighting for up to 8 hours while you are away, and you get a summary when you return." },
+  { id: "roster", when: s => s.level >= 6, text: "Click your hero's name at the top to open the roster: up to three heroes, switch any time." },
+];
+function renderTips() {
+  const el = $("tips"); if (!S) { el.hidden = true; return; }
+  S.tips = S.tips || {};
+  const tip = TIPS.find(t => !S.tips[t.id] && t.when(S));
+  if (!tip) { el.hidden = true; UI.tip = null; return; }
+  if (UI.tip !== tip.id) { UI.tip = tip.id; $("tipText").textContent = tip.text; el.hidden = false; }
+}
+
 const DEFAULT_POL = {
   autopilot: true, engage: true, abilities: true, restAt: 40, restTo: 95,
   equip: true, sell: 2, talents: true, upgrades: true, crates: true,
@@ -928,7 +952,7 @@ function newGame(name, race, cls, carry) {
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
     streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
-    event: null, nextEvent: 600 + rnd() * 300,
+    event: null, nextEvent: 600 + rnd() * 300, tips: {},
     id: Date.now().toString(36) + Math.floor(rnd() * 1e6).toString(36),
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0,
     deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, foeKills: carry.stats.foeKills, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
@@ -1979,6 +2003,7 @@ function hydrate(o) {
   o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0);
   o.event = o.event && EVENTS.some(e => e.id === o.event.id) && typeof o.event.t === "number" ? o.event : null; o.nextEvent = num(o.nextEvent, (o.stats.played || 0) + 600, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
   o.id = typeof o.id === "string" && o.id ? o.id : Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+  if (!o.tips) o.tips = (o.stats.totalPlayed || 0) > 3600 ? Object.fromEntries(TIPS.map(t => [t.id, 1])) : {}; // veterans skip the tour
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5); o.pol.fleeAt = num(o.pol.fleeAt, 20, 5, 60);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -2288,6 +2313,7 @@ function renderLive() {
   $("tXpWrap").classList.toggle("hot", S.level < MAX_LEVEL && S.xp / need > 0.85);
   const ev = S.event && EVENTS.find(x => x.id === S.event.id), evEl = $("eventPill"); evEl.hidden = !ev;
   if (ev) { evEl.style.setProperty("--ev", ev.col); evEl.innerHTML = `${ev.name}<span class="num">${Math.ceil(S.event.t)}s</span>`; evEl.title = ev.desc; }
+  renderTips();
   const stEl = $("streak"); stEl.hidden = (S.streak || 0) < 3;
   if (!stEl.hidden) stEl.innerHTML = `Streak <span class="num">×${S.streak}</span> · +${Math.min(S.streak, streakCap(S))}%`;
   $("tMin").textContent = fmt(S.minerals);
@@ -2433,6 +2459,7 @@ $("modal").addEventListener("click", e => {
   else if (t.dataset.newhero !== undefined) newHeroFlow();
 });
 $("who").addEventListener("click", openRoster);
+$("tipOk").addEventListener("click", () => { if (S && UI.tip) { S.tips[UI.tip] = 1; UI.tip = null; $("tips").hidden = true; save(); } });
 $("who").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openRoster(); } });
 $("backToRoster").addEventListener("click", () => { const parked = parkedHeroes(); if (!parked.length) return; switchHero(parked[0].id); });
 function closeModal() { $("modal").hidden = true; }
