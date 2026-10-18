@@ -161,7 +161,7 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   with a gold chevron): triple xp and minerals, bonus gas and a guaranteed rare+ drop.
 - **Feats**: 26 milestones (kills, levels, bosses, instances, streaks, bounties, crafting, mining, bonds, ascension) with
   Valor rewards and supply crates for the big ones; a Feats tab and unlock banners. Feats carry through ascension.
-- **Loot cards**: rare+ drops and any upgrade slide in at the bottom-left with the item line and "+x% power, equipping";
+- **Loot cards**: rare+ drops and any upgrade slide in at the bottom-left with the item line and "+x% power, equipping"; On phone widths the card stack is capped at two cards, narrower and shorter-lived, so it never covers the scene.
   the gear slot flashes when something new goes in and the Power stat pulses when it rises.
 - New synthesized sounds for promotion, feats, streak milestones and bounty sightings; the level-up fanfare is longer.
 - Balance: the streak and bounty bonuses speed a full-autopilot run up by roughly 15–20% (Amon now falls in ~4–7 h
