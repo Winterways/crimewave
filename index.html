@@ -270,6 +270,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .pips i { width: 8px; height: 8px; border: 1px solid var(--line); }
 .pips i.on { background: var(--acc); border-color: var(--acc); }
 
+/* world events */
+.event { font: 600 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--ev, var(--shield)); border: 1px solid var(--ev, var(--shield)); padding: 3px 8px; }
+.event .num { color: var(--ink); margin-left: 6px; }
+
 /* decisions feed */
 .feed { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; font-size: 13px; }
 .feed p { margin: 0; display: grid; grid-template-columns: 74px 92px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -361,7 +365,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
         <div class="unit foe" id="aFoe"><h3 id="aFoeName">No contact</h3><div class="meta" id="aFoeMeta">Scanning the area</div>
           <div class="bar tall" style="--c:var(--hp)"><i id="aFoeHp"></i></div></div>
       </div>
-      <div class="row" style="margin-top:10px"><div class="modeline" id="modeLine" style="margin:0"></div><span class="streak" id="streak" hidden></span></div>
+      <div class="row" style="margin-top:10px"><div class="modeline" id="modeLine" style="margin:0"></div><span class="streak" id="streak" hidden></span><span class="event" id="eventPill" hidden></span></div>
       <div class="abilities" id="abilities"></div>
       <div class="actions">
         <button class="btn" id="engageBtn">Engage</button>
@@ -794,6 +798,7 @@ const FEATS = [
   { id: "survivor", name: "Hard to Kill", desc: "Fall 10 times and keep going", valor: 5, test: s => s.stats.deaths >= 10 },
   { id: "marathon", name: "Marathon", desc: "10 hours played", valor: 15, test: s => (s.stats.totalPlayed || 0) >= 36000 },
   { id: "ascend", name: "Xel'Naga Touched", desc: "Ascend", valor: 30, crate: true, test: s => s.ascensions >= 1 },
+  { id: "events10", name: "Storm Chaser", desc: "See 10 world events", valor: 10, test: s => (s.stats.events || 0) >= 10 },
   { id: "flee10", name: "Live to Fight", desc: "Escape 10 losing fights", valor: 5, test: s => (s.stats.flees || 0) >= 10 },
   { id: "contract10", name: "Contractor", desc: "Complete 10 contracts", valor: 10, test: s => (s.stats.contracts || 0) >= 10 },
   { id: "contract50", name: "Guild Favourite", desc: "Complete 50 contracts", valor: 25, crate: true, test: s => (s.stats.contracts || 0) >= 50 },
@@ -812,6 +817,19 @@ const CONTRACT_KINDS = {
   xp: { text: c => `Earn ${fmt(c.n)} experience`, make: (s, z) => ({ n: Math.round(xpNext(s.level) * 1.5), reward: { min: 3 * (20 + z.max * 12), gas: 8 + z.max * 2 } }), when: s => s.level < MAX_LEVEL },
   craft: { text: () => "Craft an item", make: () => ({ n: 1, reward: { shards: 10, marks: 3 } }), when: s => s.mats.scrap >= craftCost(s).scrap * 0.5 },
 };
+// World events: a three-minute twist every 12-20 minutes of play, in whatever zone the hero is in.
+const EVENTS = [
+  { id: "surge", name: "Brood Surge", dur: 180, col: "#c06cff", desc: "Enemies come fast and give +50% xp" },
+  { id: "convoy", name: "Supply Convoy", dur: 180, col: "#5fcf6a", desc: "Double minerals from kills" },
+  { id: "leak", name: "Vespene Leak", dur: 180, col: "#8fe88f", desc: "Every kill yields gas" },
+  { id: "vein", name: "Rich Vein", dur: 150, col: "#9ad9ff", desc: "Mining yields triple" },
+  { id: "patrol", name: "Elite Patrol", dur: 120, col: "#ffd84a", desc: "Bounty targets roam: one spawn in three" },
+  { id: "resonance", name: "Khaydarin Resonance", dur: 180, col: "#4cc9ff", desc: "Abilities cost half and recharge 30% faster" },
+];
+const evOn = (s, id) => s.event && s.event.id === id ? 1 : 0;
+const abCost = (s, a) => evOn(s, "resonance") ? a.cost / 2 : a.cost;
+const EVENT_GAP = () => 720 + rnd() * 480;
+
 const CONTRACT_SKIP_CD = 600, CONTRACT_REFILL = 480; // play seconds between free skips, and before a finished slot refills
 // Ascension perks: one point per ascension, permanent.
 const PERKS = [
@@ -867,6 +885,7 @@ function newGame(name, race, cls, carry) {
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
     streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
+    event: null, nextEvent: 600 + rnd() * 300,
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0,
     deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
     log: [], feed: [], lastSeen: Date.now(),
@@ -970,7 +989,7 @@ function spawnFoe(s, boss) {
   const f = foeStats(L, e, boss);
   const foe = { name: e.name, title: boss ? z.boss.title : "", idx, L, hp: f.hp, max: f.hp, atk: f.atk, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss: !!boss };
   // every so often an elite bounty target shows up: tougher, triple rewards, guaranteed rare loot
-  if (!boss && s.stats.played >= (s.nextBounty || 0) && s.level >= 3) {
+  if (!boss && s.level >= 3 && (s.stats.played >= (s.nextBounty || 0) || (evOn(s, "patrol") && rnd() < 1 / 3))) {
     s.nextBounty = s.stats.played + (480 + rnd() * 420) / (1 + 0.25 * perk(s, "mark"));
     foe.elite = true; foe.title = "Bounty target"; foe.name = `${pick(BOUNTY_TITLES)} ${e.name}`;
     foe.hp *= 2.2; foe.max = foe.hp; foe.atk *= 1.25;
@@ -999,6 +1018,7 @@ function step(s, dt) {
   const d = derive(s);
   s.stats.played += dt;
   s.stats.totalPlayed = (s.stats.totalPlayed || 0) + dt;
+  eventTick(s, dt);
   s.sinceHit += dt;
   if (s.stim > 0) { s.stim -= dt; if (s.stim <= 0) { s.stim = 0; log(s, "k", `${PROF_NAMES[s.race].stim} wore off.`); bump(); } }
   s.hp = Math.min(s.hp, d.hp);
@@ -1095,9 +1115,10 @@ function useAbility(s, i, byAI) {
   const a = CLASSES[s.cls].abilities[i];
   const d = derive(s);
   if (s.mode !== "fight" || !s.foe) { if (!byAI) toast("Abilities only work in combat."); return false; }
-  if (s.cds[a.id] || s.en < a.cost) return false;
+  const cost = abCost(s, a);
+  if (s.cds[a.id] || s.en < cost) return false;
   if (a.hpCost && s.hp <= d.hp * a.hpCost + 1) return false;
-  s.en -= a.cost; s.cds[a.id] = a.cd;
+  s.en -= cost; s.cds[a.id] = a.cd * (evOn(s, "resonance") ? 0.7 : 1);
   if (a.hpCost) s.hp -= d.hp * a.hpCost;
   const who = byAI ? "Autopilot" : "You";
   fx(s, "ability", { a });
@@ -1132,14 +1153,14 @@ function aiAbilities(s, d) {
   const reserve = defensive !== undefined && hpf < 0.6 && !s.cds[abs[defensive].id] ? abs[defensive].cost : 0;
   for (const i of s.loadout) {
     const a = abs[i];
-    if (s.cds[a.id] || s.en < a.cost) continue;
+    if (s.cds[a.id] || s.en < abCost(s, a)) continue;
     let want = false;
     if (a.type === "heal") want = hpf < 0.5;
     else if (a.type === "shield") want = hpf < 0.7;
     else if (a.buff && (a.buff.dodge || a.buff.def)) want = hpf < 0.55 || (f.boss && hpf < 0.85);
     else if (a.type === "buff") want = longFight && (!a.hpCost || hpf > 0.55);
-    else if (a.type === "dot") want = f.hp > hitDmg * a.mult * 0.8 && s.en - a.cost >= reserve;
-    else if (a.type === "dmg") want = s.en - a.cost >= reserve && (a.mult < 5 || f.hp > hitDmg * a.mult * 0.7);
+    else if (a.type === "dot") want = f.hp > hitDmg * a.mult * 0.8 && s.en - abCost(s, a) >= reserve;
+    else if (a.type === "dmg") want = s.en - abCost(s, a) >= reserve && (a.mult < 5 || f.hp > hitDmg * a.mult * 0.7);
     if (want && useAbility(s, i, true)) return;
   }
 }
@@ -1159,7 +1180,9 @@ function killFoe(s, d) {
   const eliteMul = f.elite ? 3 : 1, pockets = 1 + 0.2 * perk(s, "pockets");
   let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul;
   let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4) * streakMul * eliteMul * pockets;
-  let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 ? 1 + Math.floor(f.L * 0.15) : 0;
+  let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 || evOn(s, "leak") ? 1 + Math.floor(f.L * 0.15) : 0;
+  if (evOn(s, "convoy")) min *= 2;
+  if (evOn(s, "surge")) xp *= 1.5;
   if (f.elite) { gas += 3 + Math.floor(f.L / 5); s.stats.bounties = (s.stats.bounties || 0) + 1; }
   gas = Math.round(gas * pockets);
   s.minerals += min; s.gas += gas;
@@ -1209,7 +1232,7 @@ function killFoe(s, d) {
     bump();
   }
   s.mode = auto(s, "engage") ? "seek" : "idle";
-  s.timer = 1.2 + rnd() * 0.8; s.decT = 0;
+  s.timer = (1.2 + rnd() * 0.8) * (evOn(s, "surge") ? 0.25 : 1); s.decT = 0;
 }
 
 function gainXp(s, xp) {
@@ -1538,11 +1561,12 @@ function autopilot(s, d) {
     const wantUpg = UPGRADES.map(u => upgCost(s, u.id)).filter(c => s.gas >= c.gas && s.minerals < c.min).sort((a, b) => a.min - b.min)[0];
     const shortShards = P.craft && s.mats.shards < craftCost(s).shards && s.mats.scrap >= craftCost(s).scrap;
     const mc = s.contracts.find(c => c.kind === "mine" && (s.streak < 5 || s.stats.played - c.t0 > 300)); // break a streak for it only after 5 minutes
-    if (wantUpg || shortShards || mc) {
-      const need = wantUpg ? wantUpg.min - s.minerals : mc ? mc.n - mc.c : 0;
+    const vein = evOn(s, "vein") && s.event.t > 40;
+    if (wantUpg || shortShards || mc || vein) {
+      const need = wantUpg ? wantUpg.min - s.minerals : mc ? mc.n - mc.c : vein ? mineRate(s) * Math.min(90, s.event.t) : 0;
       const secs = clamp(Math.ceil(need / mineRate(s)) + (shortShards ? 30 : 0), 20, 120);
       s.mineCd = s.stats.played + 240;
-      decide(s, "Mine", wantUpg ? `Short ${fmt(need)} minerals for research with gas in hand. Mining for ${secs}s.` : shortShards ? `Out of ${PROF_NAMES[s.race].shards} for crafting. Mining for ${secs}s.` : `Mining contract: ${fmt(need)} minerals to go. Mining for ${secs}s.`);
+      decide(s, "Mine", wantUpg ? `Short ${fmt(need)} minerals for research with gas in hand. Mining for ${secs}s.` : shortShards ? `Out of ${PROF_NAMES[s.race].shards} for crafting. Mining for ${secs}s.` : mc ? `Mining contract: ${fmt(need)} minerals to go. Mining for ${secs}s.` : `Rich Vein event: mining pays triple. Mining for ${secs}s.`);
       startMining(s, secs);
     }
   }
@@ -1649,6 +1673,24 @@ function skipContract(s, i, byAI) {
   bump(); return true;
 }
 
+/* ---------- world events ---------- */
+function eventTick(s, dt) {
+  if (s.event) {
+    s.event.t -= dt;
+    if (s.event.t <= 0) { const e = EVENTS.find(x => x.id === s.event.id); log(s, "k", `${e ? e.name : "The event"} is over.`); s.event = null; bump(); }
+    return;
+  }
+  if (s.stats.played >= (s.nextEvent || 0) && s.level >= 4 && s.mode !== "dead" && !s.run) {
+    const pool = EVENTS.filter(e => e.id !== "vein" || s.pol.mine || !s.pol.autopilot);
+    const e = pick(pool);
+    s.event = { id: e.id, t: e.dur }; s.nextEvent = s.stats.played + e.dur + EVENT_GAP();
+    s.stats.events = (s.stats.events || 0) + 1;
+    log(s, "w", `Event: ${e.name}! ${e.desc} for ${Math.round(e.dur / 60)} minutes.`);
+    fx(s, "banner", { lines: [`EVENT: ${e.name.toUpperCase()}`, e.desc], col: e.col, snd: "event" });
+    bump();
+  }
+}
+
 /* ---------- feats ---------- */
 function checkFeats(s) {
   for (const f of FEATS) {
@@ -1678,7 +1720,7 @@ function sellItem(s, it) {
   profGain(s, "salvage", 6 + it.ilvl + it.rarity * 4);
   return { min, scrap };
 }
-function mineRate(s) { const z = zoneOf(s), lvl = profLvl(s, "mining"); return (3 + z.max * 1.4) * (1 + 0.03 * lvl) * (1 + 0.1 * s.upg.salvage) * (1 + 0.2 * perk(s, "pockets")); }
+function mineRate(s) { const z = zoneOf(s), lvl = profLvl(s, "mining"); return (3 + z.max * 1.4) * (1 + 0.03 * lvl) * (1 + 0.1 * s.upg.salvage) * (1 + 0.2 * perk(s, "pockets")) * (evOn(s, "vein") ? 3 : 1); }
 function mineTick(s, d, dt) {
   s.mineT = (s.mineT || 0) + dt;
   s.hp = Math.min(d.hp, s.hp + d.hp * 0.02 * dt);
@@ -1775,14 +1817,14 @@ function ascend() {
 
 /* ---------- offline / catch-up ---------- */
 function simulate(s, seconds) {
-  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0 };
+  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0, events: s.stats.events || 0 };
   const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
   SIMULATING = true;
   try { while (t < seconds) { step(s, Math.min(dt, seconds - t)); t += dt; } } finally { SIMULATING = false; FXQ.length = 0; }
   // a supply drop waits after a long absence: one rare-or-better item for the hero's level
   let drop = null;
   if (seconds >= 4 * 3600) { drop = makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, s.level), Math.max(2, rollRarity(1.5))); gainItem(s, drop); log(s, "w", `A supply drop was waiting for you: ${drop.name}.`); }
-  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts, drop };
+  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts, events: (s.stats.events || 0) - before.events, drop };
 }
 const OFFLINE_CAP = 8 * 3600;
 
@@ -1831,7 +1873,8 @@ function hydrate(o) {
   o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0;
   o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
   o.contracts = Array.isArray(o.contracts) ? o.contracts.filter(c => c && CONTRACT_KINDS[c.kind] && typeof c.n === "number" && c.reward && (c.zone === undefined || ZONES[c.zone])).slice(0, 3) : [];
-  o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
+  o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0);
+  o.event = o.event && EVENTS.some(e => e.id === o.event.id) && typeof o.event.t === "number" ? o.event : null; o.nextEvent = num(o.nextEvent, (o.stats.played || 0) + 600, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -2130,6 +2173,8 @@ function renderLive() {
   $("tXp").textContent = S.level >= MAX_LEVEL ? "Max level" : `${fmt(S.xp)} / ${fmt(need)}`;
   $("tXpBar").style.width = (S.level >= MAX_LEVEL ? 100 : S.xp / need * 100) + "%";
   $("tXpWrap").classList.toggle("hot", S.level < MAX_LEVEL && S.xp / need > 0.85);
+  const ev = S.event && EVENTS.find(x => x.id === S.event.id), evEl = $("eventPill"); evEl.hidden = !ev;
+  if (ev) { evEl.style.setProperty("--ev", ev.col); evEl.innerHTML = `${ev.name}<span class="num">${Math.ceil(S.event.t)}s</span>`; evEl.title = ev.desc; }
   const stEl = $("streak"); stEl.hidden = (S.streak || 0) < 3;
   if (!stEl.hidden) stEl.innerHTML = `Streak <span class="num">×${S.streak}</span> · +${Math.min(S.streak, streakCap(S))}%`;
   $("tMin").textContent = fmt(S.minerals);
@@ -2168,7 +2213,7 @@ function renderLive() {
     const cd = S.cds[a.id] || 0;
     b.querySelector(".cdv").style.width = cd > 0 ? cd / a.cd * 100 + "%" : "0%";
     b.querySelector(".cdt").textContent = cd > 0 ? Math.ceil(cd) + "s" : "";
-    const usable = S.mode === "fight" && !cd && S.en >= a.cost;
+    const usable = S.mode === "fight" && !cd && S.en >= abCost(S, a);
     b.disabled = !usable;
     b.classList.toggle("lit", usable);
   });
@@ -2301,6 +2346,7 @@ function showAway(r) {
       <div><span class="label">Instances</span><span class="num">${r.runs}</span></div>
       <div><span class="label">Valor</span><span class="num">+${r.marks}</span></div>
       <div><span class="label">Contracts</span><span class="num">${r.contracts}</span></div>
+      <div><span class="label">Events</span><span class="num">${r.events}</span></div>
       <div><span class="label">Feats</span><span class="num">+${r.feats}</span></div>
       <div><span class="label">Best streak</span><span class="num">${r.streak}</span></div>
     </div>
@@ -2869,6 +2915,7 @@ const SFX = {
   click: () => tone({ type: "square", f: 900, dur: .03, vol: .04 }),
   promote: () => [392, 494, 587, 784, 988].forEach((f, i) => tone({ type: "triangle", f, dur: .3, vol: .12, delay: i * .1 })),
   flee: () => { hiss({ filter: "lowpass", freq: 900, f2: 200, dur: .35, vol: .2 }); tone({ type: "triangle", f: 440, f2: 220, dur: .3, vol: .07 }); },
+  event: () => { [330, 415, 494, 659].forEach((f, i) => tone({ type: "sawtooth", f, dur: .22, vol: .05, delay: i * .09 })); hiss({ filter: "bandpass", freq: 1200, f2: 3000, dur: .5, vol: .1 }); },
   contract: () => [784, 988, 1175].forEach((f, i) => tone({ type: "triangle", f, dur: .18, vol: .08, delay: i * .07 })),
   feat: () => { tone({ f: 988, dur: .15, vol: .08 }); tone({ f: 1319, dur: .3, vol: .08, delay: .12 }); },
   streak: () => [660, 880].forEach((f, i) => tone({ type: "square", f, dur: .1, vol: .05, delay: i * .08 })),

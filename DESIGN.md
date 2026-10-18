@@ -148,6 +148,14 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   were away" summary, so a long absence has something waiting at the end of it.
 - The layout was checked at phone width (390 px): panels stack, no horizontal scroll.
 
+## World events
+Every 12–20 minutes of play (from level 4, outside instances) a two-to-three-minute event starts, announced with a banner
+and shown as a timer pill beside the mode line: Brood Surge (enemies come four times as fast, +50% xp), Supply Convoy
+(double minerals), Vespene Leak (every kill gives gas), Rich Vein (mining pays triple; the autopilot goes mining for up to
+90 s if its mining policy is on), Elite Patrol (one spawn in three is a bounty target) and Khaydarin Resonance (abilities
+cost half and recharge 30% faster; the autopilot's ability picker knows). Events also run during offline catch-up and
+are counted in the away summary. Feat: Storm Chaser (10 events).
+
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Music (needs a free track picked by Austin). Per-zone activity schedules and more retreat rules, as in Azeroth Idle.
