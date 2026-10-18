@@ -113,6 +113,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .who { display: grid; gap: 2px; min-width: 0; }
 .who b { font: 600 17px var(--f-display); }
 .who small { color: var(--mute); }
+.who b .title { font: 400 13px var(--f-body, inherit); color: var(--mute); margin-left: 6px; }
+.card.titles .chk { display: inline-flex; gap: 6px; align-items: center; margin-left: 6px; font-size: 12px; color: var(--mute); }
+@media (max-width: 520px) { .who b .title { display: none; } }
 .xpbox { flex: 1 1 220px; display: grid; gap: 4px; min-width: 0; }
 .res { display: flex; gap: 16px; flex-wrap: wrap; }
 .res div { display: grid; gap: 2px; }
@@ -1036,6 +1039,18 @@ const FEATS = [
   { id: "daily7", name: "Habit", desc: "Check in 7 days running", valor: 15, crate: true, test: s => ((s.daily || {}).best || 0) >= 7 },
   { id: "daily30", name: "Sector Veteran", desc: "Check in 30 days running", valor: 40, crate: true, test: s => ((s.daily || {}).best || 0) >= 30 },
 ];
+// Titles: a handful of feats also name the hero. The newest is worn as it is earned unless the player picks one.
+const TITLES = [
+  { feat: "boss1", t: "the Brood Breaker" }, { feat: "k1000", t: "of the Hecatomb" }, { feat: "l20", t: "the Veteran" },
+  { feat: "boss4", t: "the Mind Killer" }, { feat: "streak30", t: "the Juggernaut" }, { feat: "legend", t: "the Legend" },
+  { feat: "raid", t: "the Raid Leader" }, { feat: "bounty10", t: "Most Wanted" }, { feat: "intel24", t: "the Field Guide" },
+  { feat: "hybrid25", t: "the Hybrid Hunter" }, { feat: "l40", t: "the Apex" }, { feat: "marathon", t: "the Tireless" },
+  { feat: "boss8", t: "the God Slayer" }, { feat: "traits3", t: "of the Inner Circle" }, { feat: "ascend", t: "the Ascended" },
+  { feat: "daily30", t: "the Sector Veteran" }, { feat: "ascend3", t: "the Eternal" }, { feat: "k5000", t: "the Extinction Event" },
+  { feat: "ascend10", t: "of the Void Beyond" },
+];
+const titleOf = s => s && s.title && s.feats[s.title] ? TITLES.find(t => t.feat === s.title) : null;
+const fullName = s => { const t = titleOf(s); return t ? `${s.name} ${t.t}` : s.name; };
 
 // Contracts: three rotating short goals, replaced as they complete. Rewards scale with the zone.
 const CONTRACT_KINDS = {
@@ -1165,7 +1180,7 @@ function newGame(name, race, cls, carry) {
     tal: Object.fromEntries(TALENTS.map(t => [t.id, 0])), talPts: 0,
     pol: { ...DEFAULT_POL, ...(carry?.pol || {}) },
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
-    streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
+    streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, title: carry?.title || "", titleAuto: carry?.titleAuto !== false, nextBounty: 480 + rnd() * 300,
     contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
     event: null, nextEvent: 600 + rnd() * 300, tips: { ...(carry?.tips || {}) }, chron: carry?.chron || [], daily: carry?.daily || { last: "", streak: 0, best: 0 }, rested: 0,
     id: Date.now().toString(36) + Math.floor(rnd() * 1e6).toString(36),
@@ -2081,7 +2096,9 @@ function checkFeats(s) {
     s.feats[f.id] = Math.floor(s.stats.totalPlayed || 0) || 1;
     s.marks += f.valor;
     log(s, "w", `Feat: ${f.name}. +${f.valor} Valor${f.crate ? " and a supply crate" : ""}.`);
-    fx(s, "banner", { lines: [`FEAT: ${f.name.toUpperCase()}`, `${f.desc} · +${f.valor} Valor`], col: "#5fcf6a", snd: "feat", small: true, delay: 1 });
+    const tt = TITLES.find(t => t.feat === f.id);
+    fx(s, "banner", { lines: [`FEAT: ${f.name.toUpperCase()}`, `${f.desc} · +${f.valor} Valor${tt ? ` · title: ${tt.t}` : ""}`], col: "#5fcf6a", snd: "feat", small: true, delay: 1 });
+    if (tt) { chron(s, `Earned the title "${tt.t}"`); if (s.titleAuto !== false) { s.title = f.id; log(s, "w", `${s.name} is now known as ${fullName(s)}. Titles are chosen in the Codex.`); UI.nameDirty = true; } else log(s, "w", `Title earned: ${tt.t}. Wear it from the Codex.`); }
     if (f.crate) gainItem(s, makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, Math.max(s.level, zoneOf(s).min)), Math.max(2, rollRarity(1))));
     bump();
   }
@@ -2245,7 +2262,7 @@ function ascend() {
   if (S.run) leaveRun(S);
   const gain = ascendGain(S);
   chron(S, `Ascended at level ${S.level}: cycle ${S.ascensions + 2} begins with ${S.essence + gain} essence.`);
-  const carry = { daily: S.daily, tips: S.tips, chron: S.chron, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, kits: S.kits, feats: S.feats, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
+  const carry = { daily: S.daily, tips: S.tips, chron: S.chron, essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, kits: S.kits, feats: S.feats, title: S.title, titleAuto: S.titleAuto, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
   S = newGame(S.name, S.race, S.cls, carry);
   log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience) and a perk point. Cycle ${S.ascensions + 1} begins: enemies have +${Math.round(CYCLE_SCALE * S.ascensions * 100)}% health and damage and pay +${Math.round(CYCLE_PAY * S.ascensions * 100)}% minerals and gas.`);
   fx(S, "banner", { lines: [`ASCENSION ${S.ascensions}`, `+${gain} essence · 1 perk point · cycle ${S.ascensions + 1} begins`], col: "#c06cff", snd: "promote" });
@@ -2351,10 +2368,10 @@ function switchHero(id) {
 function deleteHero(id) { try { localStorage.removeItem(heroKey(id)); } catch (e) {} openRoster(); }
 function openRoster() {
   const parked = parkedHeroes(), n = parked.length + (S ? 1 : 0);
-  const row = (h, active) => `<div class="hero-row ${active ? "active" : ""}"><span><b>${esc(h.name)}</b><span class="sub">${RANKS[h.race][rankIdx(h.level)]} · ${RACES[h.race].name} ${CLASSES[h.cls].name} · Level ${h.level}${h.ascensions ? ` · Ascension ${h.ascensions}` : ""}${active ? " · playing now" : h.lastSeen ? ` · away ${dur(Math.max(60, (Date.now() - h.lastSeen) / 1000))}` : ""}</span></span>
+  const row = (h, active) => `<div class="hero-row ${active ? "active" : ""}"><span><b>${esc(h.name)}</b>${h.title && h.feats && h.feats[h.title] ? ` <span class="sub">${esc(TITLES.find(t => t.feat === h.title)?.t || "")}</span>` : ""}<span class="sub">${RANKS[h.race][rankIdx(h.level)]} · ${RACES[h.race].name} ${CLASSES[h.cls].name} · Level ${h.level}${h.ascensions ? ` · Ascension ${h.ascensions}` : ""}${active ? " · playing now" : h.lastSeen ? ` · away ${dur(Math.max(60, (Date.now() - h.lastSeen) / 1000))}` : ""}</span></span>
     <span class="btns">${active ? "" : `<button class="btn small primary" data-switch="${h.id}">Switch</button><button class="btn small ghost" data-delete="${h.id}">Delete</button>`}</span></div>`;
   modal(`<h2>Roster</h2><p class="note">${n} of ${ROSTER_MAX} heroes. A parked hero waits where you left it and catches up (up to ${OFFLINE_CAP / 3600} hours) when you switch back.</p>
-    ${S ? row({ id: S.id, name: S.name, race: S.race, cls: S.cls, level: S.level, ascensions: S.ascensions }, true) : ""}${parked.map(h => row(h, false)).join("")}
+    ${S ? row({ id: S.id, name: S.name, race: S.race, cls: S.cls, level: S.level, ascensions: S.ascensions, title: S.title, feats: S.feats }, true) : ""}${parked.map(h => row(h, false)).join("")}
     <div class="btns">${n < ROSTER_MAX ? `<button class="btn" data-newhero>New hero</button>` : `<span class="note">Delete a hero to make room for a new one.</span>`}<button class="btn primary" data-close>Close</button></div>`);
 }
 function newHeroFlow() {
@@ -2391,7 +2408,7 @@ function hydrate(o) {
   o.loadout = Array.isArray(o.loadout) ? [...new Set(o.loadout.filter(i => Number.isInteger(i) && i >= 0 && i < nAb))].slice(0, 3) : [];
   if (!o.loadout.length) o.loadout = [0, 1, 2];
   o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0; o.kits = Math.round(num(o.kits, 0, 0, KIT_MAX)); o.kitCd = num(o.kitCd, 0, 0);
-  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
+  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.title = typeof o.title === "string" ? o.title : ""; o.titleAuto = o.titleAuto !== false; o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
   o.contracts = Array.isArray(o.contracts) ? o.contracts.filter(c => c && CONTRACT_KINDS[c.kind] && typeof c.n === "number" && c.reward && (c.zone === undefined || ZONES[c.zone])).slice(0, 3) : [];
   o.skipAt = num(o.skipAt, 0, 0); o.fleeCd = num(o.fleeCd, 0, 0);
   o.event = o.event && EVENTS.some(e => e.id === o.event.id) && typeof o.event.t === "number" ? o.event : null; o.nextEvent = num(o.nextEvent, (o.stats.played || 0) + 600, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
@@ -2470,11 +2487,16 @@ function startGame() {
   setupGameUI();
   last = performance.now();
 }
+function renderName() {
+  const t = titleOf(S);
+  $("tName").innerHTML = `${esc(S.name)}${t ? `<span class="title">${esc(t.t)}</span>` : ""}`;
+  $("aHeroName").textContent = S.name;
+  UI.nameDirty = false;
+}
 function setupGameUI() {
   document.body.dataset.race = S.race;
   const c = CLASSES[S.cls];
-  $("tName").textContent = S.name;
-  $("aHeroName").textContent = S.name;
+  renderName();
   $("hResName").textContent = RACES[S.race].res;
   UI.loadoutSig = S.loadout.join();
   $("abilities").innerHTML = S.loadout.map((i, k) => [c.abilities[i], i, k]).map(([a, i, k]) => `
@@ -2492,6 +2514,7 @@ let seenRev = 0, seenLog = 0, seenFeed = 0, seenTab = "";
 function renderStatic() {
   // things that change on structural events
   const d = derive(S), z = zoneOf(S), c = CLASSES[S.cls];
+  if (UI.nameDirty) renderName();
   $("tClass").innerHTML = `<span class="rank">${rankName(S)}</span> · ${RACES[S.race].name} ${c.name}${S.ascensions ? ` · Ascension ${S.ascensions}` : ""}`;
   $("tEssWrap").hidden = !S.essence;
   $("tEss").textContent = S.essence;
@@ -2661,7 +2684,7 @@ function renderPane() {
     const done = FEATS.filter(f => S.feats[f.id]).length;
     h += `<div class="row"><span class="note">${done} of ${FEATS.length} feats. Each pays Valor; some bring a supply crate.</span><span class="num">Best streak ${S.bestStreak || 0}</span></div>`;
     const sorted = [...FEATS].sort((a, b) => (S.feats[b.id] ? 1 : 0) - (S.feats[a.id] ? 1 : 0));
-    for (const f of sorted) h += `<div class="feat ${S.feats[f.id] ? "done" : "todo"}"><span class="mark">${S.feats[f.id] ? "✓" : ""}</span><span><b>${f.name}</b><span class="sub">${f.desc}</span></span><span class="num">+${f.valor}${f.crate ? " · crate" : ""}</span></div>`;
+    for (const f of sorted) h += `<div class="feat ${S.feats[f.id] ? "done" : "todo"}"><span class="mark">${S.feats[f.id] ? "✓" : ""}</span><span><b>${f.name}</b><span class="sub">${f.desc}</span></span><span class="num">+${f.valor}${f.crate ? " · crate" : ""}${TITLES.some(t => t.feat === f.id) ? " · title" : ""}</span></div>`;
   }
   if (UI.tab === "codex") {
     h += `<div class="card"><h3>${RACES[S.race].name}</h3><p>${RACES[S.race].blurb} ${RACES[S.race].passive}</p></div>`;
@@ -2684,6 +2707,7 @@ function renderPane() {
     });
     const met = COMPANIONS.filter(c => S.bosses[c.from]);
     if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${{ dps: "Damage", healer: "Healer", tank: "Tank" }[c.role] || c.role}<span class="sub">${c.blurb}</span>${SIGNATURES[c.id] ? `<span class="sub">Signature: ${esc(SIGNATURES[c.id].name)}</span>` : ""}${TRAITS[c.id] && traitTier(S, c.id) ? `<span class="sub">Trait: ${esc(TRAITS[c.id].name)}, ${TRAITS[c.id].desc(TRAITS[c.id].v * traitTier(S, c.id))}</span>` : ""}</span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
+    h += titlesCard();
     h += `<div class="card"><h3>Record</h3><div class="sum">
       <div><span class="label">Kills</span><span class="num">${fmt(S.stats.kills)}</span></div><div><span class="label">Bosses</span><span class="num">${S.stats.bosses}</span></div>
       <div><span class="label">Instances</span><span class="num">${S.stats.runs || 0}</span></div><div><span class="label">Deaths</span><span class="num">${S.stats.deaths}</span></div>
@@ -2732,6 +2756,15 @@ function planSteps(s) {
 function planCard() {
   const steps = planSteps(S);
   return `<div class="card plan"><h3>${S.pol.autopilot ? "Autopilot plan" : "Plan"}</h3><ol>${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol></div>`;
+}
+function titlesCard() {
+  const earned = TITLES.filter(t => S.feats[t.feat]), locked = TITLES.filter(t => !S.feats[t.feat]);
+  const feat = id => FEATS.find(f => f.id === id);
+  let h = `<div class="card titles"><div class="row"><h3>Titles</h3><span class="num">${earned.length} of ${TITLES.length}</span></div>
+    <p>${earned.length ? `Known as <b>${esc(fullName(S))}</b>.` : `${esc(S.name)} has no title yet. Some feats grant one.`} <label class="chk"><input type="checkbox" data-titleauto ${S.titleAuto !== false ? "checked" : ""}> Wear new titles as they are earned</label></p>`;
+  if (earned.length) h += `<div class="btns" style="justify-content:start">${earned.map(t => `<button class="btn small ${S.title === t.feat ? "primary" : ""}" data-title="${t.feat}">${esc(t.t)}</button>`).join("")}<button class="btn small ghost ${!titleOf(S) ? "primary" : ""}" data-title="">No title</button></div>`;
+  if (locked.length) h += `<p class="note">Still to earn: ${locked.slice(0, 6).map(t => `<b>${esc(t.t)}</b> (${esc(feat(t.feat).desc)})`).join(", ")}${locked.length > 6 ? ` and ${locked.length - 6} more` : ""}.</p>`;
+  return h + `</div>`;
 }
 function ascendCard() {
   return `<div class="card cur"><h3>Ascension${S.ascensions ? ` · ${S.ascensions} so far` : ""}</h3><p>Amon has fallen and ${esc(S.name)} is holding at max level. Ascending resets level, zones, gear and talents; research, perks, companions, professions, kits, feats and policies stay${perk(S, "headstart") ? `, and Head Start begins the next cycle at level ${5 * perk(S, "headstart")}` : ""}. Gain <span class="num">${ascendGain(S)}</span> Xel'Naga essence, each worth +4% damage, health and experience forever (${S.essence ? `${S.essence} held now, ` : ""}${S.essence + ascendGain(S)} after), plus one perk point (see Build). Cycle ${S.ascensions + 2} is harder: enemies have <span class="num">+${Math.round(CYCLE_SCALE * (S.ascensions + 1) * 100)}%</span> health and damage and pay <span class="num">+${Math.round(CYCLE_PAY * (S.ascensions + 1) * 100)}%</span> minerals and gas.</p><div class="btns" style="justify-content:start"><button class="btn small primary" data-act="ascend">Ascend</button></div></div>`;
@@ -2921,12 +2954,14 @@ $("pane").addEventListener("click", e => {
   if (act === "import") openImport();
   if (act === "reset") openRoster();
   if (act === "tour") startTour();
+  if (t.dataset.title !== undefined) { S.title = t.dataset.title; S.titleAuto = false; renderName(); toast(titleOf(S) ? `Now known as ${fullName(S)}.` : `${S.name} wears no title.`); bump(); }
   save();
 });
 $("pane").addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.polnum) { const v = parseFloat(t.value); if (!isNaN(v)) S.pol[t.dataset.polnum] = clamp(v, +t.min, +t.max); }
   if (t.dataset.polsel) S.pol[t.dataset.polsel] = +t.value;
+  if (t.dataset.titleauto !== undefined) { S.titleAuto = t.checked; if (t.checked) { const newest = TITLES.filter(x => S.feats[x.feat]).sort((a, b) => S.feats[b.feat] - S.feats[a.feat])[0]; if (newest) S.title = newest.feat; renderName(); } bump(); }
   if (t.dataset.plannum || t.dataset.plansel) {
     const z = +t.dataset.zone, pl = { ...planOf(S, z) }; S.plan = S.plan || {};
     if (t.dataset.plannum) { const v = parseInt(t.value, 10); pl[t.dataset.plannum] = isNaN(v) ? 0 : clamp(v, 0, MAX_LEVEL); } else pl[t.dataset.plansel] = clamp(+t.value, 0, PLAN_MINE.length - 1);
