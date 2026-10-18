@@ -218,6 +218,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .pol small { color: var(--mute); font-size: 12px; display: block; }
 .pol select, .pol input[type=number] { background: var(--plate-2); color: var(--ink); border: 1px solid var(--line); padding: 5px 6px; font: 13px var(--f-mono); }
 .pol input[type=number] { width: 64px; }
+.pol.presets { grid-template-columns: minmax(0, 1fr); }
+.pol.presets .btns { justify-content: start; flex-wrap: wrap; }
 .note { font-size: 13px; color: var(--mute); }
 .pips { display: flex; gap: 3px; }
 .pips i { width: 9px; height: 9px; background: var(--plate-2); border: 1px solid var(--line); }
@@ -1145,6 +1147,13 @@ function renderTips() {
   if (UI.tip !== tip.id) { UI.tip = tip.id; $("tipText").textContent = tip.text; el.hidden = false; }
 }
 
+// Presets set the four numbers that decide how much risk the autopilot takes; every switch is left alone.
+const PRESETS = [
+  { id: "cautious", name: "Cautious", sub: "Rests early and often, flees at 30%, wants a 1.6x edge before a boss. Fewer deaths, slower levels.", v: { restAt: 55, restTo: 100, fleeAt: 30, bossMargin: 1.6 } },
+  { id: "balanced", name: "Balanced", sub: "The defaults: rest under 40%, flee at 20%, fight bosses at a 1.3x edge.", v: { restAt: 40, restTo: 95, fleeAt: 20, bossMargin: 1.3 } },
+  { id: "bold", name: "Bold", sub: "Rests only under 25%, flees at 10%, takes bosses at 1.1x. Faster, with the odd death.", v: { restAt: 25, restTo: 80, fleeAt: 10, bossMargin: 1.1 } },
+];
+const presetOf = P => PRESETS.find(p => Object.keys(p.v).every(k => P[k] === p.v[k])) || null;
 const DEFAULT_POL = {
   autopilot: true, engage: true, abilities: true, restAt: 40, restTo: 95,
   equip: true, sell: 2, talents: true, upgrades: true, crates: true,
@@ -2831,7 +2840,10 @@ function ascendCard() {
 function policiesPane() {
   const P = S.pol;
   const tog = (k, title, sub) => `<div class="pol"><span><b>${title}</b><small>${sub}</small></span><button class="switch" role="switch" data-pol="${k}" aria-checked="${!!P[k]}" aria-label="${esc(title)}"></button></div>`;
+  const cur = presetOf(P);
   return `<p class="note">These rules drive the autopilot, both while you watch and while you are away. ${P.autopilot ? "" : "<b>Autopilot is off</b>, so none of them apply right now."}</p>
+    <div class="pol presets"><span><b>Risk preset</b><small>${cur ? esc(cur.sub) : "Custom numbers below. A preset sets rest, flee and boss margin together; the switches are left alone."}</small></span>
+      <span class="btns">${PRESETS.map(p => `<button class="btn small ${cur && cur.id === p.id ? "primary" : ""}" data-preset="${p.id}" title="${esc(p.sub)}">${p.name}</button>`).join("")}</span></div>
     ${tog("engage", "Keep fighting", "Find the next enemy after every kill.")}
     ${tog("abilities", "Use abilities", "Fire abilities on cooldown, holding a defensive one in reserve when health drops.")}
     <div class="pol"><span><b>Rest below</b><small>Stop between fights when health falls under this, then rest up to the second value.</small></span>
@@ -3013,6 +3025,7 @@ $("pane").addEventListener("click", e => {
   if (act === "import") openImport();
   if (act === "reset") openRoster();
   if (act === "tour") startTour();
+  if (t.dataset.preset) { const p = PRESETS.find(x => x.id === t.dataset.preset); if (p) { Object.assign(S.pol, p.v); decide(S, "Rules", `${p.name} preset: rest under ${p.v.restAt}% to ${p.v.restTo}%, flee at ${p.v.fleeAt}%, boss margin ${p.v.bossMargin}x.`); toast(`${p.name}: ${p.sub}`); bump(); } }
   if (t.dataset.title !== undefined) { S.title = t.dataset.title; S.titleAuto = false; renderName(); toast(titleOf(S) ? `Now known as ${fullName(S)}.` : `${S.name} wears no title.`); bump(); }
   save();
 });
