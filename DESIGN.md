@@ -189,6 +189,12 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   (+20% minerals and gas per rank), Battle Rhythm (streak cap +10% per rank), Bloodline (companions +10% per rank),
   Scavenger (+15% drop chance per rank), Hunter's Mark (bounties 25% more often per rank). The autopilot policy
   "Spend ascension perks" spreads points lowest rank first.
+- **Endgame hand-off**: Auto-ascend is off by default, so a hero that beats Amon holds at level 40. Playing an hour past
+  Amon showed nothing told the player why: the banner even pointed at the wrong tab. Now the Amon banner and log point at
+  the Quests tab, the Ascension card sits at the top of that tab and says what is kept, what is gained (essence held now
+  and after) and where Head Start would begin, a once-only tip and a feed line say the hero is holding, the away summary
+  says it too, and kill lines drop the useless "+xp" at max level. Ascension also carries the dismissed tips over, so a
+  veteran no longer sees the first-hour tour again on the second cycle.
 - Pacing check: 10 h autopilot sims complete 74–82 contracts and Amon still falls in 4.0–5.3 h (unchanged from before
   contracts); the first version paid a quarter level per contract with instant refills and cut that to 2–3 h, which is
   why the refill timer exists.
