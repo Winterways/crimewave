@@ -162,6 +162,12 @@ and shown as a timer pill beside the mode line: Brood Surge (enemies come four t
 cost half and recharge 30% faster; the autopilot's ability picker knows). Events also run during offline catch-up and
 are counted in the away summary. Feat: Storm Chaser (10 events).
 
+## Codex and bestiary
+The Codex lists every zone you have seen with its three enemies and your kill count for each; after five kills the entry
+reveals a line of field intel (24 entries, plus the boss once beaten). Companions you have met are listed with their bond
+rank, and the Record card now covers bounties, contracts, events, best streak, minerals mined, items crafted, escapes and
+ascensions. Feats: Xenobiologist (12 entries) and Field Guide (all 24, with a crate). Kill counts carry through ascension.
+
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Music (needs a free track picked by Austin). Per-zone activity schedules and more retreat rules, as in Azeroth Idle.
