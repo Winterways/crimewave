@@ -807,8 +807,9 @@ function step(s, dt) {
       s.hp = Math.min(d.hp, s.hp + d.hp * 0.07 * dt);
       s.en = Math.min(100, s.en + 8 * dt);
       if (s.run) for (const m of s.run.party) m.hp = Math.min(m.max, m.hp + m.max * 0.07 * dt);
-      if (s.hp >= d.hp * (s.pol.autopilot ? s.pol.restTo / 100 : 1) - 0.01 && partyRested(s)) {
-        s.mode = auto(s, "engage") ? "seek" : "idle"; s.timer = 1;
+      if (s.hp >= d.hp * (s.pol.autopilot ? Math.max(s.pol.restTo, s.restGoal || 0) / 100 : 1) - 0.01 && partyRested(s)) {
+        s.restGoal = 0;
+        s.mode = auto(s, "engage") ? "seek" : "idle"; s.timer = 1; s.decT = 0;
         log(s, "k", "Rested and ready.");
       }
       break;
@@ -980,7 +981,7 @@ function killFoe(s, d) {
     bump();
   }
   s.mode = auto(s, "engage") ? "seek" : "idle";
-  s.timer = 1.2 + rnd() * 0.8;
+  s.timer = 1.2 + rnd() * 0.8; s.decT = 0;
 }
 
 function gainXp(s, xp) {
@@ -1181,6 +1182,13 @@ function autopilot(s, d) {
   if (P.engage && (s.mode === "seek" || s.mode === "idle") && (s.hp < d.hp * P.restAt / 100 || (s.run && s.run.party.some(m => m.hp < m.max * P.restAt / 100)))) {
     s.mode = "rest";
     log(s, "k", `Autopilot: health at ${Math.round(s.hp / d.hp * 100)}%, below the ${P.restAt}% threshold. Resting to ${P.restTo}%.`);
+  }
+  // 1b. rest up first when a boss or instance is wanted but health is not full enough
+  if (P.engage && s.mode === "seek" && s.hp < d.hp * 0.9 && s.hp >= d.hp * P.restAt / 100 && !s.run) {
+    const q0 = questState(s, s.zone);
+    const bossWanted = P.boss && !s.bosses[s.zone] && q0.i >= z.quests.length && (s.bossLoss || 0) < s.level && bossOdds(s, d) >= P.bossMargin;
+    const runWanted = P.dungeons && (s.dtry || 0) <= s.stats.played && DUNGEONS.some((dg, i) => !dungeonReady(s, i) && !(s.dfail && s.dfail[i] >= s.level) && s.level >= dLevel(dg) - 4 && s.level <= dLevel(dg) + 4 && bestParty(s).length >= (dg.raid ? 2 : 1));
+    if (bossWanted || runWanted) { s.mode = "rest"; s.restGoal = 92; log(s, "k", `Autopilot: resting up before ${bossWanted ? z.boss.name : "an instance"}.`); }
   }
   // 2. gear
   if (P.equip && s.bag.length) {
@@ -1427,32 +1435,63 @@ function ascend() {
 
 /* ---------- offline / catch-up ---------- */
 function simulate(s, seconds) {
-  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone };
-  const dt = 0.5; let t = 0;
+  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks };
+  const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
   SIMULATING = true;
   try { while (t < seconds) { step(s, Math.min(dt, seconds - t)); t += dt; } } finally { SIMULATING = false; FXQ.length = 0; }
-  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null };
+  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks };
 }
 const OFFLINE_CAP = 8 * 3600;
 
 /* ============================================================================
    PERSISTENCE
    ========================================================================== */
-const KEY = "koprulu-idle-v1";
+const KEY = "koprulu-idle-v1", SAVE_V = 2;
+let backupT = 0;
 function save() {
   if (!S) return;
-  S.lastSeen = Date.now();
-  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage unavailable */ }
+  S.lastSeen = Date.now(); S.v = SAVE_V;
+  try {
+    const json = JSON.stringify(S);
+    localStorage.setItem(KEY, json);
+    // a rolling backup every minute, in case the main save is ever cut short
+    if (Date.now() - backupT > 60000) { backupT = Date.now(); localStorage.setItem(KEY + "-backup", json); }
+  } catch (e) { /* storage unavailable */ }
 }
 function load() {
-  try { const raw = localStorage.getItem(KEY); return raw ? hydrate(JSON.parse(raw)) : null; } catch (e) { return null; }
+  for (const k of [KEY, KEY + "-backup"]) {
+    try { const raw = localStorage.getItem(k); const o = raw && hydrate(JSON.parse(raw)); if (o) { if (k !== KEY) log(o, "w", "Restored from the backup save."); return o; } } catch (e) { /* try the next one */ }
+  }
+  return null;
 }
+const num = (v, d, lo, hi) => (typeof v === "number" && isFinite(v) ? clamp(v, lo ?? -Infinity, hi ?? Infinity) : d);
 function hydrate(o) {
-  if (!o || !o.cls || !CLASSES[o.cls]) return null;
+  if (!o || !o.cls || !CLASSES[o.cls] || !RACES[o.race]) return null;
+  // clamp anything a bad save or an old version could have left out of range
+  o.level = num(o.level, 1, 1, MAX_LEVEL); o.xp = num(o.xp, 0, 0); o.minerals = num(o.minerals, 0, 0); o.gas = num(o.gas, 0, 0);
+  o.essence = num(o.essence, 0, 0); o.ascensions = num(o.ascensions, 0, 0); o.talPts = num(o.talPts, 0, 0);
+  o.zone = num(o.zone, 0, 0, ZONES.length - 1); o.unlocked = num(o.unlocked, 0, o.zone, ZONES.length - 1);
+  o.en = num(o.en, 50, 0, 100); o.shield = num(o.shield, 0, 0); o.pshield = num(o.pshield, 0, 0); o.timer = num(o.timer, 1, 0, 60);
+  o.gear = o.gear || {}; for (const k of SLOTS) if (o.gear[k] && (!o.gear[k].st || !SLOTS.includes(o.gear[k].slot))) o.gear[k] = null;
+  o.bag = (o.bag || []).filter(it => it && it.st && SLOTS.includes(it.slot)).slice(0, 24);
+  o.upg = { weapons: 0, armor: 0, logistics: 0, salvage: 0, ...(o.upg || {}) };
+  o.tal = Object.fromEntries(TALENTS.map(t => [t.id, num((o.tal || {})[t.id], 0, 0, TALENT_MAX)]));
+  o.quests = o.quests || {}; o.bosses = o.bosses || {}; o.cds = o.cds || {}; o.buffs = Array.isArray(o.buffs) ? o.buffs : [];
+  o.stats = { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(o.stats || {}) };
+  o.log = Array.isArray(o.log) ? o.log : []; o.feed = Array.isArray(o.feed) ? o.feed : []; o.deaths = Array.isArray(o.deaths) ? o.deaths : [];
+  if (!["fight", "seek", "rest", "idle", "dead", "mine"].includes(o.mode)) o.mode = "seek";
+  if (o.mode === "fight" && !o.foe) o.mode = "seek";
+  if (o.run && (!DUNGEONS[o.run.d] || !Array.isArray(o.run.party))) o.run = null;
+  const nAb = CLASSES[o.cls].abilities.length;
+  o.loadout = Array.isArray(o.loadout) ? [...new Set(o.loadout.filter(i => Number.isInteger(i) && i >= 0 && i < nAb))].slice(0, 3) : [];
+  if (!o.loadout.length) o.loadout = [0, 1, 2];
   o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0;
-  o.loadout = o.loadout || [0, 1, 2]; o.marks = o.marks || 0; o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
-  o.pol = { ...DEFAULT_POL, ...o.pol };
-  o.seen = o.seen || { 0: true };
+  o.marks = num(o.marks, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
+  o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
+  o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5);
+  o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
+  const d = derive(o); o.hp = num(o.hp, d.hp, 0, d.hp);
+  if (o.mode !== "dead" && o.hp <= 0) o.hp = d.hp * 0.5;
   return o;
 }
 function exportSave() { save(); return btoa(unescape(encodeURIComponent(JSON.stringify(S)))); }
@@ -1656,6 +1695,10 @@ function renderPane() {
       if (!S.seen[i]) return;
       h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${S.bosses[i] ? `<p><b>${zz.boss.name}</b>, ${zz.boss.title}. ${zz.boss.line}</p>` : ""}</div>`;
     });
+    h += `<div class="card"><h3>Record</h3><div class="sum">
+      <div><span class="label">Kills</span><span class="num">${fmt(S.stats.kills)}</span></div><div><span class="label">Bosses</span><span class="num">${S.stats.bosses}</span></div>
+      <div><span class="label">Instances</span><span class="num">${S.stats.runs || 0}</span></div><div><span class="label">Deaths</span><span class="num">${S.stats.deaths}</span></div>
+      <div><span class="label">Items found</span><span class="num">${fmt(S.stats.items)}</span></div><div><span class="label">Time played</span><span class="num">${dur(S.stats.totalPlayed || S.stats.played)}</span></div></div></div>`;
     h += `<div class="card"><h3>Save data</h3><p>Progress saves in this browser every few seconds. Export a save code to move it to another device.</p>
       <div class="btns" style="justify-content:start"><button class="btn small" data-act="export">Export save</button><button class="btn small" data-act="import">Import save</button><button class="btn small ghost" data-act="reset">New hero</button></div></div>`;
     h += `<p class="note">Fan-made, non-commercial prototype. StarCraft and its characters are trademarks of Blizzard Entertainment.</p>`;
@@ -1778,6 +1821,7 @@ $("apSwitch").addEventListener("click", () => {
   S.pol.autopilot = !S.pol.autopilot;
   decide(S, "Control", S.pol.autopilot ? "Autopilot engaged." : "Manual control. The autopilot will not act until you switch it back on.");
   if (S.pol.autopilot && S.mode === "idle") { S.mode = "seek"; S.timer = 1; }
+  if (S.pol.autopilot && S.mode === "mine" && S.mineFor === undefined) S.mineFor = 30;
   bump(); save();
 });
 $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) { UI.tab = b.dataset.tab; try { localStorage.setItem(KEY + "-tab", UI.tab); } catch (x) {} } });
@@ -1859,6 +1903,8 @@ function showAway(r) {
       <div><span class="label">Vespene</span><span class="num">+${fmt(r.gas)}</span></div>
       <div><span class="label">Items found</span><span class="num">${r.items}</span></div>
       <div><span class="label">Bosses</span><span class="num">${r.bosses}</span></div>
+      <div><span class="label">Instances</span><span class="num">${r.runs}</span></div>
+      <div><span class="label">Valor</span><span class="num">+${r.marks}</span></div>
     </div>
     ${r.zone ? `<p class="note">Now fighting in ${r.zone}.</p>` : ""}${r.deaths ? `<p class="note">Fell ${r.deaths} time${r.deaths > 1 ? "s" : ""} along the way.</p>` : ""}
     <div class="btns"><button class="btn primary" data-close>Continue</button></div>`);
@@ -2427,7 +2473,8 @@ function frame() {
     const r = simulate(S, Math.min(el, OFFLINE_CAP)); bump(); showAway(r);
   } else {
     acc += el;
-    while (acc >= DT) { step(S, DT); acc -= DT; }
+    try { while (acc >= DT) { step(S, DT); acc -= DT; } }
+    catch (e) { console.error(e); acc = 0; if (S.mode === "fight") { S.foe = null; S.mode = "seek"; S.timer = 1; } }
   }
   saveT += el;
   if (saveT > 5) { saveT = 0; save(); }
