@@ -6,8 +6,12 @@ watch or while you're away. Personal, non-commercial fan project (StarCraft is B
 
 ## Files
 - `game.html`: the game as an artifact page (no doctype; the source of truth).
-- `index.html`: standalone copy for opening locally or hosting anywhere. Rebuild with `sh build.sh`.
-- No build step, no dependencies besides Google Fonts. Saves to `localStorage`, with export/import codes.
+- `index.html`: standalone copy for opening locally or hosting anywhere. Rebuild with `node build.js` (or `sh build.sh`).
+- No build step for the game itself, no dependencies besides Google Fonts. Saves to `localStorage`, with export/import codes.
+- `src-tauri/`: a Tauri 2 desktop shell around `dist/index.html` (Windows installer via NSIS/MSI, also macOS and Linux).
+  Build steps are in `README.md`. It runs the same JavaScript in the system web view, so it is not faster by itself; the
+  point is a dedicated window that is never throttled as a background tab. Austin asked about the Azeroth Idle client:
+  that one is a Rust/Bevy app, which is a different architecture (native rendering), not a wrapped web page.
 
 ## Core loop
 1. Pick race (Terran / Protoss / Zerg) and one of 3 classes each (9 total), each with 3 abilities.

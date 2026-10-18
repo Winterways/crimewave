@@ -1,0 +1,15 @@
+{
+  "name": "koprulu-idle",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Koprulu Idle: a StarCraft-themed idle RPG. Browser game plus a Tauri desktop shell.",
+  "scripts": {
+    "build": "node build.js",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
