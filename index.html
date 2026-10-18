@@ -320,6 +320,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vertical; }
 .float { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--plate-2); border: 1px solid var(--acc); padding: 10px 14px; font-size: 13px; z-index: 30; max-width: min(360px, calc(100vw - 32px)); }
 
+.item .sub.on { color: var(--ink); } .item .sub.on b { color: var(--good); }
 .card p.hz { color: var(--ink); } .card p.hz b { color: var(--acc); font-weight: 600; }
 kbd { font: 600 11px var(--f-mono); background: var(--plate); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; color: var(--ink); }
 .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 13px; }
@@ -850,6 +851,21 @@ const COMPANIONS = [
   { id: "dehaka", name: "Dehaka", role: "tank", from: 6, blurb: "Primal pack leader who grows stronger with every essence he devours." },
 ];
 const ROLE_LABEL = { dps: "Damage", tank: "Tank", healer: "Healer" };
+// Bond traits: at bond rank 5 a companion also helps in the field, and at rank 10 the trait doubles. It turns Valor
+// from an instance-only currency into something the whole hero feels, and gives each companion a reason to be bonded.
+const TRAITS = {
+  raynor: { name: "Marshal's cut", st: "pay", v: 0.06, desc: v => `+${Math.round(v * 100)}% minerals and gas from kills` },
+  kerrigan: { name: "Ghost sight", st: "crit", v: 0.03, desc: v => `+${Math.round(v * 100)} points of critical chance` },
+  zeratul: { name: "Shadow step", st: "dodge", v: 0.04, desc: v => `+${Math.round(v * 100)}% chance to dodge` },
+  tassadar: { name: "Khala's warmth", st: "hp", v: 0.05, desc: v => `+${Math.round(v * 100)}% max health` },
+  fenix: { name: "Praetor's stance", st: "def", v: 0.08, desc: v => `+${Math.round(v * 100)}% armor` },
+  morales: { name: "Field triage", st: "rest", v: 0.2, desc: v => `resting ${Math.round(v * 100)}% faster` },
+  dehaka: { name: "Essence hunger", st: "xp", v: 0.04, desc: v => `+${Math.round(v * 100)}% experience from kills` },
+};
+const TRAIT_AT = 5, TRAIT_MAX_AT = 10;
+const traitTier = (s, id) => { const r = ((s.comp || {})[id] || {}).rank || 0; return r >= TRAIT_MAX_AT ? 2 : r >= TRAIT_AT ? 1 : 0; };
+// Sum of every active trait on one stat, in the field and in instances alike.
+function traits(s, st) { let v = 0; for (const id in TRAITS) if (TRAITS[id].st === st) v += TRAITS[id].v * traitTier(s, id); return v; }
 // Signature abilities fire on their own every cd seconds of combat inside an instance. Damage is in seconds of the
 // companion's dps, heals in fractions of max health, so they scale with bond rank, essence and the Bloodline perk.
 const SIGNATURES = {
@@ -1000,6 +1016,7 @@ const FEATS = [
   { id: "craft", name: "Tinkerer", desc: "Craft 10 items", valor: 10, test: s => (s.stats.crafted || 0) >= 10 },
   { id: "mine", name: "Prospector", desc: "Mine 2,000 minerals", valor: 10, test: s => (s.stats.mined || 0) >= 2000 },
   { id: "bond", name: "Brothers in Arms", desc: "Bond a companion to rank 5", valor: 10, test: s => Object.values(s.comp).some(c => c.rank >= 5) },
+  { id: "traits3", name: "Inner Circle", desc: "Have three companion traits active", valor: 20, crate: true, test: s => Object.keys(TRAITS).filter(id => traitTier(s, id)).length >= 3 },
   { id: "survivor", name: "Hard to Kill", desc: "Fall 10 times and keep going", valor: 5, test: s => s.stats.deaths >= 10 },
   { id: "marathon", name: "Marathon", desc: "10 hours played", valor: 15, test: s => (s.stats.totalPlayed || 0) >= 36000 },
   { id: "ascend", name: "Xel'Naga Touched", desc: "Ascend", valor: 30, crate: true, test: s => s.ascensions >= 1 },
@@ -1216,8 +1233,8 @@ function derive(s, o = {}) {
   const ess = (1 + 0.04 * s.essence) * (s.stim > 0 ? 1.15 : 1);
   return {
     atk: (c.base.atk * (1 + 0.13 * (L - 1)) + g.atk * 1.15 / c.base.aspd) * (1 + 0.03 * t.ballistics + 0.07 * u.weapons) * ess,
-    hp: (c.base.hp * (1 + 0.15 * (L - 1)) + g.hp) * (1 + 0.04 * t.plating + 0.06 * u.armor) * ess,
-    def: (c.base.def * (1 + 0.1 * (L - 1)) + g.def) * (1 + 0.07 * u.armor),
+    hp: (c.base.hp * (1 + 0.15 * (L - 1)) + g.hp) * (1 + 0.04 * t.plating + 0.06 * u.armor) * ess * (1 + traits(s, "hp")),
+    def: (c.base.def * (1 + 0.1 * (L - 1)) + g.def) * (1 + 0.07 * u.armor) * (1 + traits(s, "def")),
     crit: Math.min(0.75, c.base.crit + g.crit + 0.01 * t.optics),
     aspd: c.base.aspd * (1 + g.aspd + 0.02 * t.overdrive),
     regen: 4 * (1 + 0.06 * t.cells),
@@ -1234,7 +1251,8 @@ function buffAgg(s) {
   const b = { aspd: 0, atk: 0, crit: 0, def: 0, dodge: 0 };
   for (const x of s.buffs) for (const k in x.buff) b[k] += x.buff[k];
   if (evOn(s, "relic")) b.crit += 0.15;
-  b.crit += hz(s, "crit", 0);
+  b.crit += hz(s, "crit", 0) + traits(s, "crit");
+  b.dodge += traits(s, "dodge");
   return b;
 }
 
@@ -1323,7 +1341,7 @@ function step(s, dt) {
       if (s.timer <= 0) { s.hp = d.hp; s.en = 60; s.mode = auto(s, "engage") ? "seek" : "idle"; s.timer = 1.5; log(s, "k", "You are back on your feet."); }
       break;
     case "rest":
-      s.hp = Math.min(d.hp, s.hp + d.hp * 0.07 * dt * hz(s, "rest"));
+      s.hp = Math.min(d.hp, s.hp + d.hp * 0.07 * dt * hz(s, "rest") * (1 + traits(s, "rest")));
       s.en = Math.min(100, s.en + 8 * dt);
       if (s.run) for (const m of s.run.party) m.hp = Math.min(m.max, m.hp + m.max * 0.07 * dt);
       if (s.hp >= d.hp * (s.pol.autopilot ? Math.max(s.pol.restTo, s.restGoal || 0) / 100 : 1) - 0.01 && partyRested(s)) {
@@ -1497,8 +1515,8 @@ function killFoe(s, d) {
   const cap = streakCap(s), streakMul = 1 + Math.min(s.streak, cap) * 0.01 * hz(s, "streak");
   if (s.streak === 10 || s.streak === 20 || s.streak === cap) fx(s, "banner", { lines: [`${s.streak} KILL STREAK`, `+${Math.min(s.streak, cap)}% xp and minerals`], col: "#e8b43c", snd: "streak", small: true });
   contractEvent(s, "streak", s.streak);
-  const eliteMul = f.elite ? 3 : 1, pockets = (1 + 0.2 * perk(s, "pockets")) * (1 + CYCLE_PAY * (s.ascensions || 0)) * hz(s, "pay");
-  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul * hz(s, "xp");
+  const eliteMul = f.elite ? 3 : 1, pockets = (1 + 0.2 * perk(s, "pockets")) * (1 + CYCLE_PAY * (s.ascensions || 0)) * hz(s, "pay") * (1 + traits(s, "pay"));
+  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul * hz(s, "xp") * (1 + traits(s, "xp"));
   let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4) * streakMul * eliteMul * pockets;
   let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 || evOn(s, "leak") ? 1 + Math.floor(f.L * 0.15) : 0;
   if (evOn(s, "convoy")) min *= 2;
@@ -1886,7 +1904,7 @@ function autopilot(s, d) {
     if (!compUnlocked(s, c)) continue;
     if (!bestParty(s).includes(c.id)) continue;
     const cost = bondCost(s, c.id), rank = (s.comp[c.id] || {}).rank || 0;
-    if (rank < 10 && s.marks >= cost) { s.marks -= cost; s.comp[c.id] = { rank: rank + 1 }; decide(s, "Companion", `Raised ${c.name}'s bond to rank ${rank + 1} for ${cost} Valor.`); bump(); }
+    if (rank < 10 && s.marks >= cost) { s.marks -= cost; s.comp[c.id] = { rank: rank + 1 }; decide(s, "Companion", `Raised ${c.name}'s bond to rank ${rank + 1} for ${cost} Valor.${rank + 1 === TRAIT_AT && TRAITS[c.id] ? ` ${TRAITS[c.id].name} is active: ${TRAITS[c.id].desc(TRAITS[c.id].v)}.` : rank + 1 === TRAIT_MAX_AT && TRAITS[c.id] ? ` ${TRAITS[c.id].name} is at full strength.` : ""}`); bump(); }
   }
   // 4d. crafting
   if (P.kits && P.craft && s.mode !== "fight" && (s.kits || 0) < 2 && canMakeKit(s) && s.mats.scrap >= kitCost(s).scrap + craftCost(s).scrap * 0.5) makeKit(s, true);
@@ -2550,7 +2568,7 @@ function renderPane() {
       const open = compUnlocked(S, c), rank = (S.comp[c.id] || {}).rank || 0, cost = bondCost(S, c.id);
       if (!open) { h += `<div class="item card locked"><span><b>???</b><span class="sub">Defeat ${ZONES[c.from].boss.name} to recruit.</span></span></div>`; continue; }
       const cs = compStats(S, c.id);
-      h += `<div class="item"><span><b>${esc(c.name)}</b> <span class="role">${ROLE_LABEL[c.role]}</span><span class="sub">${esc(c.blurb)}</span><span class="sub">Bond ${rank}/10 · ${fmt(cs.max)} hp · ${fmt(cs.dps)} dps${cs.heal ? ` · heals ${fmt(cs.heal)}/s` : ""}</span>${SIGNATURES[c.id] ? `<span class="sub"><b>${esc(SIGNATURES[c.id].name)}</b> every ${SIGNATURES[c.id].cd} s: ${esc(SIGNATURES[c.id].desc)}</span>` : ""}</span>
+      h += `<div class="item"><span><b>${esc(c.name)}</b> <span class="role">${ROLE_LABEL[c.role]}</span><span class="sub">${esc(c.blurb)}</span><span class="sub">Bond ${rank}/10 · ${fmt(cs.max)} hp · ${fmt(cs.dps)} dps${cs.heal ? ` · heals ${fmt(cs.heal)}/s` : ""}</span>${TRAITS[c.id] ? `<span class="sub ${traitTier(S, c.id) ? "on" : ""}"><b>${esc(TRAITS[c.id].name)}</b>: ${traitTier(S, c.id) ? `${TRAITS[c.id].desc(TRAITS[c.id].v * traitTier(S, c.id))}, everywhere${traitTier(S, c.id) < 2 ? ` (doubles at bond ${TRAIT_MAX_AT})` : ""}` : `at bond ${TRAIT_AT}, ${TRAITS[c.id].desc(TRAITS[c.id].v)} everywhere`}</span>` : ""}${SIGNATURES[c.id] ? `<span class="sub"><b>${esc(SIGNATURES[c.id].name)}</b> every ${SIGNATURES[c.id].cd} s: ${esc(SIGNATURES[c.id].desc)}</span>` : ""}</span>
         <span class="btns"><button class="btn small" data-bond="${c.id}" ${rank >= 10 || S.marks < cost ? "disabled" : ""}>Bond +1 · ${cost}</button></span></div>`;
     }
   }
@@ -2640,7 +2658,7 @@ function renderPane() {
       h += `<div class="card"><h3>${esc(dg.name)} ${dg.raid ? '<span class="role raidtag">Raid</span>' : ""}</h3><p>${esc(dg.blurb)}</p>${dg.enc.map(e => row(e.name, INSTANCE_LORE[e.name], false)).join("")}${row(dg.boss.name, INSTANCE_LORE[dg.boss.name], true)}</div>`;
     });
     const met = COMPANIONS.filter(c => S.bosses[c.from]);
-    if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${{ dps: "Damage", healer: "Healer", tank: "Tank" }[c.role] || c.role}<span class="sub">${c.blurb}</span>${SIGNATURES[c.id] ? `<span class="sub">Signature: ${esc(SIGNATURES[c.id].name)}</span>` : ""}</span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
+    if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${{ dps: "Damage", healer: "Healer", tank: "Tank" }[c.role] || c.role}<span class="sub">${c.blurb}</span>${SIGNATURES[c.id] ? `<span class="sub">Signature: ${esc(SIGNATURES[c.id].name)}</span>` : ""}${TRAITS[c.id] && traitTier(S, c.id) ? `<span class="sub">Trait: ${esc(TRAITS[c.id].name)}, ${TRAITS[c.id].desc(TRAITS[c.id].v * traitTier(S, c.id))}</span>` : ""}</span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
     h += `<div class="card"><h3>Record</h3><div class="sum">
       <div><span class="label">Kills</span><span class="num">${fmt(S.stats.kills)}</span></div><div><span class="label">Bosses</span><span class="num">${S.stats.bosses}</span></div>
       <div><span class="label">Instances</span><span class="num">${S.stats.runs || 0}</span></div><div><span class="label">Deaths</span><span class="num">${S.stats.deaths}</span></div>
@@ -2828,7 +2846,7 @@ $("pane").addEventListener("click", e => {
   }
   if (t.dataset.bond) {
     const id = t.dataset.bond, cost = bondCost(S, id), rank = (S.comp[id] || {}).rank || 0;
-    if (rank < 10 && S.marks >= cost) { S.marks -= cost; S.comp[id] = { rank: rank + 1 }; bump(); }
+    if (rank < 10 && S.marks >= cost) { S.marks -= cost; S.comp[id] = { rank: rank + 1 }; bump(); if (TRAITS[id] && (rank + 1 === TRAIT_AT || rank + 1 === TRAIT_MAX_AT)) toast(`${TRAITS[id].name}: ${TRAITS[id].desc(TRAITS[id].v * traitTier(S, id))}, everywhere.`); }
   }
   if (t.dataset.tal) { if (S.talPts > 0 && S.tal[t.dataset.tal] < TALENT_MAX) { S.tal[t.dataset.tal]++; S.talPts--; bump(); } }
   if (t.dataset.perk) { const pk = PERKS.find(x => x.id === t.dataset.perk); if (pk && S.perkPts > 0 && perk(S, pk.id) < pk.max) { S.perks[pk.id] = perk(S, pk.id) + 1; S.perkPts--; log(S, "k", `Perk: ${pk.name} rank ${S.perks[pk.id]}.`); bump(); } }

@@ -267,6 +267,10 @@ during offline catch-up and are counted in the away summary. Feat: Storm Chaser 
   full one (a cadence audit of a five-hour run showed the burst of full banners; the audit found no other dead
   stretch longer than 3.6 minutes between reward moments).
 
+## Companion bond traits
+
+Valor used to buy companion power that only showed inside instances. Now each companion has a trait that switches on at bond rank 5 and doubles at rank 10, and applies everywhere: Raynor +6% kill pay, Kerrigan +3 crit points, Zeratul +4% dodge, Tassadar +5% max health, Fenix +8% armor, Morales 20% faster resting, Dehaka +4% kill xp. `TRAITS` holds the table, `traits(s, stat)` sums the active ones, and the hooks sit in `derive` (hp, def), `buffAgg` (crit, dodge), the rest case and `killFoe`. The Dungeons tab shows each trait under its companion (grey until active), the Codex companions card lists active ones, bonding to rank 5 or 10 says so in the feed or a toast, and the Inner Circle feat (three traits active) pays 20 Valor and a crate. Six-hour sims after the change: Amon in 2.7–5.1 hours, 0–1 deaths.
+
 ## Zone hazards
 
 Every zone after Mar Sara has one passive rule in the field (never inside an instance), each a cost paired with a perk so zones play differently without any being strictly worse: Tarsonis finds enemies sooner but drops less loot, Char rests slower but pays more, Aiur regenerates energy faster against faster enemies, Shakuras trades 8 points of crit for 12% tougher enemies, Korhal pays 20% more xp against harder hitters, Ulnar strengthens shields and slows energy, the Void doubles streak bonuses against harder hitters. `HAZARDS` holds the table and `hz(s, key)` reads one multiplier; bosses ignore the enemy-side multipliers so boss odds stay honest. The Map card, the Codex zone card, the zone header and the travel log all state the rule. Six-hour sims of all nine classes after the change: Amon in 3.3–5.1 hours, 0–1 deaths.
@@ -313,7 +317,7 @@ counter covers both tables (58 entries).
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Music (needs a free track picked by Austin). Consumables landed as kits and the retreat rules are flee-at-% and
   fall-back-after-deaths; Azeroth Idle's "avoid packs" has no equivalent here because fights are one enemy at a time.
-- Companion gear or talents is the next content idea; zone hazards and Codex boss-move lines landed, and feats cover
-  the newer systems (Braced, Aftershock, Hybrid Hunter, Second Wind, Weather Eye).
+- Companion gear is the remaining content idea in this family; bond traits, zone hazards and Codex boss-move lines
+  landed, and feats cover the newer systems (Braced, Aftershock, Hybrid Hunter, Second Wind, Weather Eye, Inner Circle).
 - `benilla-re` (shared as a reference) is a WoW 1.12 client reverse-engineering index, likely what
   Azeroth Idle's real-client approach builds on. It isn't needed for a browser game like this one.
