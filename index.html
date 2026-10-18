@@ -258,6 +258,18 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .feat .sub { display: block; color: var(--mute); font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .pulse, .slot.flash, .lootcard { animation: none !important; } }
 
+/* contracts and perks */
+.contract { background: var(--plate); padding: 9px 12px; display: grid; gap: 5px; border-left: 2px solid var(--shield); }
+.contract .bar { height: 4px; }
+.contract .rw { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--mute); align-items: center; }
+.contract .rw b { color: var(--ink); font-weight: 500; }
+.perk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--plate); padding: 8px 12px; }
+.perk b { display: block; font-size: 14px; }
+.perk .sub { display: block; color: var(--mute); font-size: 12px; }
+.pips { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+.pips i { width: 8px; height: 8px; border: 1px solid var(--line); }
+.pips i.on { background: var(--acc); border-color: var(--acc); }
+
 /* decisions feed */
 .feed { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; font-size: 13px; }
 .feed p { margin: 0; display: grid; grid-template-columns: 74px 92px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -697,13 +709,41 @@ const FEATS = [
   { id: "survivor", name: "Hard to Kill", desc: "Fall 10 times and keep going", valor: 5, test: s => s.stats.deaths >= 10 },
   { id: "marathon", name: "Marathon", desc: "10 hours played", valor: 15, test: s => (s.stats.totalPlayed || 0) >= 36000 },
   { id: "ascend", name: "Xel'Naga Touched", desc: "Ascend", valor: 30, crate: true, test: s => s.ascensions >= 1 },
+  { id: "contract10", name: "Contractor", desc: "Complete 10 contracts", valor: 10, test: s => (s.stats.contracts || 0) >= 10 },
+  { id: "contract50", name: "Guild Favourite", desc: "Complete 50 contracts", valor: 25, crate: true, test: s => (s.stats.contracts || 0) >= 50 },
 ];
+
+// Contracts: three rotating short goals, replaced as they complete. Rewards scale with the zone.
+const CONTRACT_KINDS = {
+  kills: { text: c => `Destroy ${c.n} enemies in ${ZONES[c.zone].name}`, make: (s, z) => ({ zone: s.zone, n: Math.round((40 + s.level * 3) / 5) * 5, reward: { min: 4 * (20 + z.max * 12), gas: 8 + z.max * 2 } }) },
+  foe: { text: c => `Hunt ${c.n} × ${ZONES[c.zone].foes[c.foe].name}`, make: (s, z) => ({ zone: s.zone, foe: Math.floor(rnd() * z.foes.length), n: 15 + Math.floor(s.level * 1.2), reward: { min: 4 * (20 + z.max * 12), shards: 6 } }) },
+  boss: { text: () => "Defeat a boss, in a zone or an instance", make: (s, z) => ({ n: 1, reward: { marks: 6, gas: 10 + z.max * 2 } }), when: s => Object.keys(s.comp).length > 0 },
+  run: { text: () => "Clear a dungeon or raid", make: () => ({ n: 1, reward: { marks: 8, crate: true } }), when: s => Object.keys(s.comp).length > 0 },
+  streak: { text: c => `Reach a ${c.n}-kill streak`, make: s => ({ n: 10 + Math.floor(s.level / 3), reward: { marks: 4, shards: 6 } }) },
+  mine: { text: c => `Mine ${fmt(c.n)} minerals`, make: (s, z) => ({ n: Math.round((400 + s.level * 100) / 50) * 50, reward: { gas: 10 + z.max * 3, shards: 8 } }), when: s => s.level >= 4 },
+  bounty: { text: () => "Bring down a bounty target", make: () => ({ n: 1, reward: { marks: 5, crate: true } }), when: s => s.level >= 3 },
+  rare: { text: c => `Find ${c.n} rare or better items`, make: (s, z) => ({ n: 2, reward: { min: 2 * (20 + z.max * 12), marks: 3 } }) },
+  xp: { text: c => `Earn ${fmt(c.n)} experience`, make: (s, z) => ({ n: Math.round(xpNext(s.level) * 1.5), reward: { min: 3 * (20 + z.max * 12), gas: 8 + z.max * 2 } }), when: s => s.level < MAX_LEVEL },
+  craft: { text: () => "Craft an item", make: () => ({ n: 1, reward: { shards: 10, marks: 3 } }), when: s => s.mats.scrap >= craftCost(s).scrap * 0.5 },
+};
+const CONTRACT_SKIP_CD = 600, CONTRACT_REFILL = 480; // play seconds between free skips, and before a finished slot refills
+// Ascension perks: one point per ascension, permanent.
+const PERKS = [
+  { id: "headstart", name: "Head Start", max: 3, desc: r => `Begin each ascension at level ${5 * r}` },
+  { id: "pockets", name: "Deep Pockets", max: 5, desc: r => `+${20 * r}% minerals and gas from kills and mining` },
+  { id: "rhythm", name: "Battle Rhythm", max: 3, desc: r => `Kill streak bonus caps at +${STREAK_MAX + 10 * r}%` },
+  { id: "bloodline", name: "Bloodline", max: 5, desc: r => `Companions +${10 * r}% power` },
+  { id: "scavenger", name: "Scavenger", max: 3, desc: r => `+${15 * r}% chance of loot drops` },
+  { id: "mark", name: "Hunter's Mark", max: 3, desc: r => `Bounty targets appear ${25 * r}% more often` },
+];
+const perk = (s, id) => (s.perks && s.perks[id]) || 0;
+const streakCap = s => STREAK_MAX + 10 * perk(s, "rhythm");
 
 const DEFAULT_POL = {
   autopilot: true, engage: true, abilities: true, restAt: 40, restTo: 95,
   equip: true, sell: 2, talents: true, upgrades: true, crates: true,
   advance: true, boss: true, bossMargin: 1.3, retreat: true, ascend: false,
-  loadout: true, dungeons: true, mine: true, craft: true, stims: true,
+  loadout: true, dungeons: true, mine: true, craft: true, stims: true, perks: true,
 };
 
 /* ============================================================================
@@ -739,12 +779,14 @@ function newGame(name, race, cls, carry) {
     pol: { ...DEFAULT_POL, ...(carry?.pol || {}) },
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
     streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
+    contracts: [], skipAt: 0, perks: carry?.perks || {}, perkPts: carry?.perkPts || 0,
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0,
-    deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
+    deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, contracts: carry.stats.contracts, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
     log: [], feed: [], lastSeen: Date.now(),
   };
   s.gear.weapon = makeItem(s, "weapon", 1, 0);
   s.gear.armor = makeItem(s, "armor", 1, 0);
+  if (carry && perk(s, "headstart")) { s.level = 1 + 5 * perk(s, "headstart"); s.talPts = s.level - 1; }
   s.hp = derive(s).hp;
   return s;
 }
@@ -842,7 +884,7 @@ function spawnFoe(s, boss) {
   const foe = { name: e.name, title: boss ? z.boss.title : "", idx, L, hp: f.hp, max: f.hp, atk: f.atk, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss: !!boss };
   // every so often an elite bounty target shows up: tougher, triple rewards, guaranteed rare loot
   if (!boss && s.stats.played >= (s.nextBounty || 0) && s.level >= 3) {
-    s.nextBounty = s.stats.played + 480 + rnd() * 420;
+    s.nextBounty = s.stats.played + (480 + rnd() * 420) / (1 + 0.25 * perk(s, "mark"));
     foe.elite = true; foe.title = "Bounty target"; foe.name = `${pick(BOUNTY_TITLES)} ${e.name}`;
     foe.hp *= 2.2; foe.max = foe.hp; foe.atk *= 1.25;
     log(s, "w", `Bounty target sighted: ${foe.name}!`);
@@ -913,7 +955,7 @@ function step(s, dt) {
   }
 
   s.decT -= dt;
-  if (s.decT <= 0) { s.decT = 1; checkFeats(s); if (s.pol.autopilot) autopilot(s, d); }
+  if (s.decT <= 0) { s.decT = 1; ensureContracts(s); checkFeats(s); if (s.pol.autopilot) autopilot(s, d); }
 }
 
 function heroHit(s, d, mult, forceCrit, ability) {
@@ -1023,21 +1065,27 @@ function killFoe(s, d) {
   const ess = 1 + 0.04 * s.essence;
   s.streak = (s.streak || 0) + 1;
   if (s.streak > (s.bestStreak || 0)) s.bestStreak = s.streak;
-  const streakMul = 1 + Math.min(s.streak, STREAK_MAX) * 0.01;
-  if (s.streak === 10 || s.streak === 20 || s.streak === STREAK_MAX) fx(s, "banner", { lines: [`${s.streak} KILL STREAK`, `+${Math.min(s.streak, STREAK_MAX)}% xp and minerals`], col: "#e8b43c", snd: "streak", small: true });
-  const eliteMul = f.elite ? 3 : 1;
+  const cap = streakCap(s), streakMul = 1 + Math.min(s.streak, cap) * 0.01;
+  if (s.streak === 10 || s.streak === 20 || s.streak === cap) fx(s, "banner", { lines: [`${s.streak} KILL STREAK`, `+${Math.min(s.streak, cap)}% xp and minerals`], col: "#e8b43c", snd: "streak", small: true });
+  contractEvent(s, "streak", s.streak);
+  const eliteMul = f.elite ? 3 : 1, pockets = 1 + 0.2 * perk(s, "pockets");
   let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul;
-  let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4) * streakMul * eliteMul;
+  let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4) * streakMul * eliteMul * pockets;
   let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 ? 1 + Math.floor(f.L * 0.15) : 0;
   if (f.elite) { gas += 3 + Math.floor(f.L / 5); s.stats.bounties = (s.stats.bounties || 0) + 1; }
+  gas = Math.round(gas * pockets);
   s.minerals += min; s.gas += gas;
   if (f.boss) { const n = f.raid ? 3 : f.run ? 2 : 1; s.mats.cores += n; log(s, "w", `+${n} ${PROF_NAMES[s.race].cores}.`); }
   else if (rnd() < 0.08) { s.mats.shards += 1 + Math.floor(f.L / 15); }
   s.stats.kills++;
   log(s, "g", `${f.name} destroyed. +${fmt(xp)} xp, +${fmt(min)} minerals${gas ? `, +${gas} gas` : ""}.`);
+  contractEvent(s, "xp", xp);
+  if (f.boss) contractEvent(s, "boss", 1);
+  if (f.elite) contractEvent(s, "bounty", 1);
+  if (!f.run && !f.boss) { contractEvent(s, "kills", 1); contractEvent(s, "foe", 1, f.idx); }
   gainXp(s, xp);
   // loot
-  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || rnd() < (f.run ? 0.35 : 0.16) ? 1 : 0;
+  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) ? 1 : 0;
   for (let i = 0; i < drops; i++) {
     const floor = f.raid && f.boss ? 3 : f.boss || f.elite ? 2 : 0;
     const rarity = Math.max(floor, rollRarity(f.raid ? 4 : f.boss || f.run ? 2 : 0));
@@ -1105,6 +1153,7 @@ function gainXp(s, xp) {
 function gainItem(s, it) {
   s.stats.items++;
   if (it.rarity > (s.stats.bestRarity || 0)) s.stats.bestRarity = it.rarity;
+  if (it.rarity >= 2) contractEvent(s, "rare", 1);
   fx(s, "loot", { rarity: it.rarity });
   if (s === S && !SIMULATING && (it.rarity >= 2 || itemGain(s, it) > 0.001)) lootCard(it, itemGain(s, it));
   log(s, "r" + it.rarity, `Loot: ${it.name}.`);
@@ -1141,7 +1190,7 @@ function questState(s, z) { return s.quests[z] || (s.quests[z] = { i: 0, c: 0 })
 /* ---------- companions, dungeons & raids ---------- */
 function compUnlocked(s, c) { return !!s.bosses[c.from]; }
 function compStats(s, id) {
-  const c = COMPANIONS.find(x => x.id === id), r = refHero(s.level), m = (1 + 0.1 * ((s.comp[id] || {}).rank || 0)) * (1 + 0.04 * s.essence);
+  const c = COMPANIONS.find(x => x.id === id), r = refHero(s.level), m = (1 + 0.1 * ((s.comp[id] || {}).rank || 0)) * (1 + 0.04 * s.essence) * (1 + 0.1 * perk(s, "bloodline"));
   if (c.role === "tank") return { role: "tank", max: r.hp * 2.4 * m, dps: r.dps * 0.35 * m, def: r.def * 2.2, heal: 0 };
   if (c.role === "healer") return { role: "healer", max: r.hp * 0.85 * m, dps: r.dps * 0.25 * m, def: r.def, heal: r.hp * 0.045 * m };
   return { role: "dps", max: r.hp * 0.85 * m, dps: r.dps * 0.75 * m, def: r.def, heal: 0 };
@@ -1215,6 +1264,7 @@ function runProgress(s, f) {
     s.marks += marks;
     s.dcd[s.run.d] = (s.stats.totalPlayed || 0) + (dg.raid ? RAID_LOCK : D_LOCK);
     s.stats.runs = (s.stats.runs || 0) + 1; if (dg.raid) s.stats.raids = (s.stats.raids || 0) + 1;
+    contractEvent(s, "run", 1);
     log(s, "w", `${dg.name} cleared! +${marks} Valor.`);
     decide(s, dg.raid ? "Raid" : "Dungeon", `Cleared ${dg.name}. Earned ${marks} Valor.`);
     s.run = null; bump();
@@ -1328,6 +1378,14 @@ function autopilot(s, d) {
     }
   }
   // 3. talents
+  if (P.perks && s.perkPts > 0) {
+    const open = PERKS.filter(pk => perk(s, pk.id) < pk.max).sort((a, b) => perk(s, a.id) / a.max - perk(s, b.id) / b.max)[0];
+    if (open) { s.perks[open.id] = perk(s, open.id) + 1; s.perkPts--; decide(s, "Perk", `Took ${open.name} rank ${s.perks[open.id]}: ${open.desc(s.perks[open.id])}.`); bump(); }
+  }
+  if (s.stats.played >= (s.skipAt || 0)) {
+    const stale = s.contracts.findIndex(c => s.stats.played - Math.max(c.t0, c.lastProg) > 1200);
+    if (stale >= 0) skipContract(s, stale, true);
+  }
   if (P.talents && s.talPts > 0) {
     let best = null, bg = -1;
     for (const t of TALENTS) {
@@ -1377,11 +1435,12 @@ function autopilot(s, d) {
   if (P.mine && s.mode === "seek" && s.hp >= d.hp * 0.9 && (s.mineCd || 0) <= s.stats.played) {
     const wantUpg = UPGRADES.map(u => upgCost(s, u.id)).filter(c => s.gas >= c.gas && s.minerals < c.min).sort((a, b) => a.min - b.min)[0];
     const shortShards = P.craft && s.mats.shards < craftCost(s).shards && s.mats.scrap >= craftCost(s).scrap;
-    if (wantUpg || shortShards) {
-      const need = wantUpg ? wantUpg.min - s.minerals : 0;
+    const mc = s.contracts.find(c => c.kind === "mine" && (s.streak < 5 || s.stats.played - c.t0 > 300)); // break a streak for it only after 5 minutes
+    if (wantUpg || shortShards || mc) {
+      const need = wantUpg ? wantUpg.min - s.minerals : mc ? mc.n - mc.c : 0;
       const secs = clamp(Math.ceil(need / mineRate(s)) + (shortShards ? 30 : 0), 20, 120);
       s.mineCd = s.stats.played + 240;
-      decide(s, "Mine", wantUpg ? `Short ${fmt(need)} minerals for research with gas in hand. Mining for ${secs}s.` : `Out of ${PROF_NAMES[s.race].shards} for crafting. Mining for ${secs}s.`);
+      decide(s, "Mine", wantUpg ? `Short ${fmt(need)} minerals for research with gas in hand. Mining for ${secs}s.` : shortShards ? `Out of ${PROF_NAMES[s.race].shards} for crafting. Mining for ${secs}s.` : `Mining contract: ${fmt(need)} minerals to go. Mining for ${secs}s.`);
       startMining(s, secs);
     }
   }
@@ -1433,7 +1492,59 @@ function autopilot(s, d) {
     }
   }
   // 9. ascend
-  if (P.ascend && s.bosses[ZONES.length - 1]) ascend();
+  if (P.ascend && s === S && s.bosses[ZONES.length - 1]) ascend(); // ascend() rebuilds the live hero, so rehearsal copies never do it
+}
+
+/* ---------- contracts ---------- */
+function newContract(s) {
+  const z = zoneOf(s), taken = s.contracts.map(c => c.kind);
+  const pool = Object.keys(CONTRACT_KINDS).filter(k => !taken.includes(k) && (!CONTRACT_KINDS[k].when || CONTRACT_KINDS[k].when(s)));
+  const kind = pick(pool.length ? pool : ["kills"]);
+  return { kind, c: 0, t0: s.stats.played, lastProg: s.stats.played, ...CONTRACT_KINDS[kind].make(s, z) };
+}
+function ensureContracts(s) {
+  // the first three arrive at once; after that a finished slot refills every 8 minutes of play, so the queue is something to come back to
+  while (s.contracts.length < 3 && s.stats.played >= (s.contractT || 0)) { s.contracts.push(newContract(s)); if (s.stats.played > 60) s.contractT = s.stats.played + CONTRACT_REFILL; }
+}
+const contractText = c => CONTRACT_KINDS[c.kind] ? CONTRACT_KINDS[c.kind].text(c) : "Contract";
+function rewardText(s, r) {
+  const N = PROF_NAMES[s.race], out = [];
+  if (r.min) out.push(`${fmt(r.min)} minerals`); if (r.gas) out.push(`${r.gas} gas`); if (r.marks) out.push(`${r.marks} Valor`);
+  if (r.shards) out.push(`${r.shards} ${N.shards}`); if (r.crate) out.push("a supply crate");
+  return out.join(", ");
+}
+function contractEvent(s, kind, amount, foe) {
+  if (!s.contracts) return;
+  for (const c of [...s.contracts]) {
+    if (c.kind !== kind) continue;
+    if ((kind === "kills" || kind === "foe") && c.zone !== s.zone) continue;
+    if (kind === "foe" && c.foe !== foe) continue;
+    const before = c.c;
+    c.c = kind === "streak" ? Math.max(c.c, amount) : Math.min(c.n, c.c + amount);
+    if (c.c > before) c.lastProg = s.stats.played;
+    if (c.c >= c.n) completeContract(s, c);
+  }
+}
+function completeContract(s, c) {
+  const i = s.contracts.indexOf(c); if (i < 0) return;
+  s.contracts.splice(i, 1);
+  const r = c.reward, xp = Math.round(xpNext(Math.min(s.level, MAX_LEVEL - 1)) * 0.08);
+  s.minerals += r.min || 0; s.gas += r.gas || 0; s.marks += r.marks || 0; s.mats.shards += r.shards || 0;
+  s.stats.contracts = (s.stats.contracts || 0) + 1;
+  log(s, "w", `Contract complete: ${contractText(c)}. +${rewardText(s, r)}, +${fmt(xp)} xp.`);
+  fx(s, "banner", { lines: ["CONTRACT COMPLETE", contractText(c)], col: "#4cc9ff", snd: "contract", small: true, delay: .5 });
+  if (r.crate) gainItem(s, makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, s.level), Math.max(2, rollRarity(1))));
+  ensureContracts(s);
+  if (s.level < MAX_LEVEL) gainXp(s, xp);
+  bump();
+}
+function skipContract(s, i, byAI) {
+  const c = s.contracts[i]; if (!c || s.stats.played < (s.skipAt || 0)) return false;
+  s.skipAt = s.stats.played + CONTRACT_SKIP_CD;
+  s.contracts.splice(i, 1); s.contracts.push(newContract(s)); // a skip is replaced at once; the cooldown is on skipping itself
+  if (byAI) decide(s, "Contract", `Dropped "${contractText(c)}": no progress for 20 minutes. Took "${contractText(s.contracts[s.contracts.length - 1])}" instead.`);
+  else log(s, "k", `Dropped the contract "${contractText(c)}".`);
+  bump(); return true;
 }
 
 /* ---------- feats ---------- */
@@ -1465,13 +1576,13 @@ function sellItem(s, it) {
   profGain(s, "salvage", 6 + it.ilvl + it.rarity * 4);
   return { min, scrap };
 }
-function mineRate(s) { const z = zoneOf(s), lvl = profLvl(s, "mining"); return (3 + z.max * 1.4) * (1 + 0.03 * lvl) * (1 + 0.1 * s.upg.salvage); }
+function mineRate(s) { const z = zoneOf(s), lvl = profLvl(s, "mining"); return (3 + z.max * 1.4) * (1 + 0.03 * lvl) * (1 + 0.1 * s.upg.salvage) * (1 + 0.2 * perk(s, "pockets")); }
 function mineTick(s, d, dt) {
   s.mineT = (s.mineT || 0) + dt;
   s.hp = Math.min(d.hp, s.hp + d.hp * 0.02 * dt);
   while (s.mineT >= 1) {
     s.mineT -= 1;
-    s.minerals += mineRate(s); s.stats.mined = (s.stats.mined || 0) + mineRate(s);
+    s.minerals += mineRate(s); s.stats.mined = (s.stats.mined || 0) + mineRate(s); contractEvent(s, "mine", mineRate(s));
     if (rnd() < 0.15 + 0.004 * profLvl(s, "mining")) { s.mats.shards += 1 + (rnd() < 0.3 ? 1 : 0); fx(s, "shard"); }
     profGain(s, "mining", 2 + zoneOf(s).max * 0.3);
     if (s.mineFor !== undefined) s.mineFor -= 1;
@@ -1494,7 +1605,7 @@ function craftItem(s, slot, byAI) {
   if (t.legend && rnd() < t.legend) rarity = 4;
   const it = makeItem(s, slot, Math.min(MAX_LEVEL, s.level + 1), rarity);
   it.crafted = true;
-  profGain(s, "craft", 40 + s.level * 4); s.stats.crafted = (s.stats.crafted || 0) + 1;
+  profGain(s, "craft", 40 + s.level * 4); s.stats.crafted = (s.stats.crafted || 0) + 1; contractEvent(s, "craft", 1);
   if (byAI) decide(s, "Craft", `Crafted ${it.name} for ${c.scrap} ${PROF_NAMES[s.race].scrap}${c.cores ? " and a core" : ""}.`);
   else log(s, "w", `Crafted ${it.name}.`);
   gainItem(s, it);
@@ -1552,20 +1663,21 @@ function ascend() {
   if (!S.bosses[ZONES.length - 1]) return;
   if (S.run) leaveRun(S);
   const gain = ascendGain(S);
-  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, feats: S.feats, bestStreak: S.bestStreak };
+  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, feats: S.feats, bestStreak: S.bestStreak, perks: S.perks, perkPts: S.perkPts + 1 };
   S = newGame(S.name, S.race, S.cls, carry);
-  log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience).`);
+  log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience) and a perk point.`);
+  fx(S, "banner", { lines: [`ASCENSION ${S.ascensions}`, `+${gain} essence · 1 perk point`], col: "#c06cff", snd: "promote" });
   decide(S, "Ascend", `Ascension ${S.ascensions}: kept research and gained ${gain} Xel'Naga essence.`);
   bump(); setupGameUI(); save();
 }
 
 /* ---------- offline / catch-up ---------- */
 function simulate(s, seconds) {
-  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length };
+  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length, contracts: s.stats.contracts || 0 };
   const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
   SIMULATING = true;
   try { while (t < seconds) { step(s, Math.min(dt, seconds - t)); t += dt; } } finally { SIMULATING = false; FXQ.length = 0; }
-  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0 };
+  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0, contracts: (s.stats.contracts || 0) - before.contracts };
 }
 const OFFLINE_CAP = 8 * 3600;
 
@@ -1612,7 +1724,9 @@ function hydrate(o) {
   o.loadout = Array.isArray(o.loadout) ? [...new Set(o.loadout.filter(i => Number.isInteger(i) && i >= 0 && i < nAb))].slice(0, 3) : [];
   if (!o.loadout.length) o.loadout = [0, 1, 2];
   o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0;
-  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
+  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0);
+  o.contracts = Array.isArray(o.contracts) ? o.contracts.filter(c => c && CONTRACT_KINDS[c.kind] && typeof c.n === "number" && c.reward && (c.zone === undefined || ZONES[c.zone])).slice(0, 3) : [];
+  o.skipAt = num(o.skipAt, 0, 0); o.contractT = num(o.contractT, 0, 0); o.perks = o.perks || {}; o.perkPts = num(o.perkPts, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -1728,15 +1842,24 @@ function renderStatic() {
   renderPane();
 }
 function renderTabs() {
-  const dots = { crafting: canCraft(S) && !(S.pol.autopilot && S.pol.craft), talents: S.talPts > 0 || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
+  const dots = { crafting: canCraft(S) && !(S.pol.autopilot && S.pol.craft), talents: S.talPts > 0 || S.perkPts > 0 || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
   $("tabs").innerHTML = TABS.map(([k, n]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${UI.tab === k}">${n}${dots[k] ? '<span class="dot"></span>' : ""}</button>`).join("");
 }
 function renderPane() {
   const p = $("pane"), z = zoneOf(S);
   let h = "";
   if (UI.tab === "quests") {
+    ensureContracts(S);
+    const canSkip = S.stats.played >= (S.skipAt || 0);
+    h += `<div class="row"><h3 class="label">Contracts</h3><span class="note">${canSkip ? "One skip ready" : `Next skip in ${dur(S.skipAt - S.stats.played)}`} · ${S.stats.contracts || 0} completed</span></div>`;
+    S.contracts.forEach((c, i) => {
+      h += `<div class="contract"><div class="row"><b>${contractText(c)}</b><span class="num">${fmt(Math.min(c.c, c.n))}/${fmt(c.n)}</span></div>
+        <div class="bar" style="--c:var(--shield)"><i style="width:${Math.min(100, c.c / c.n * 100)}%"></i></div>
+        <div class="rw"><span>Reward: <b>${rewardText(S, c.reward)}</b> and xp</span><button class="chip" data-skip="${i}" ${canSkip ? "" : "disabled"}>Skip</button></div></div>`;
+    });
+    if (S.contracts.length < 3) h += `<div class="contract" style="opacity:.6;border-left-color:var(--line)"><div class="row"><b>Next contract</b><span class="num">in ${dur(Math.max(0, (S.contractT || 0) - S.stats.played))}</span></div></div>`;
     const q = questState(S, S.zone);
-    h += `<div class="note">Quest giver: <span class="giver">${z.giver}</span></div>`;
+    h += `<h3 class="label" style="margin-top:6px">Zone quests</h3><div class="note">Quest giver: <span class="giver">${z.giver}</span></div>`;
     z.quests.forEach((qd, i) => {
       const state = i < q.i ? "done" : i === q.i ? "cur" : "locked";
       const prog = i < q.i ? qd.n : i === q.i ? q.c : 0;
@@ -1827,6 +1950,14 @@ function renderPane() {
       h += `<div class="item"><span><b>${t.name}</b><span class="sub">${t.desc}</span><span class="pips" style="margin-top:5px">${Array.from({ length: TALENT_MAX }, (_, i) => `<i class="${i < S.tal[t.id] ? "on" : ""}"></i>`).join("")}</span></span>
         <span class="btns"><button class="btn small" data-tal="${t.id}" ${S.talPts > 0 && S.tal[t.id] < TALENT_MAX ? "" : "disabled"}>+1</button></span></div>`;
     }
+    if (S.ascensions > 0 || S.perkPts > 0) {
+      h += `<h3 class="label" style="margin-top:6px">Ascension perks</h3><p class="note">${S.perkPts} unspent point${S.perkPts === 1 ? "" : "s"}. One per ascension, kept forever.${S.pol.autopilot && S.pol.perks ? " Autopilot spends them." : ""}</p>`;
+      for (const pk of PERKS) {
+        const r = perk(S, pk.id);
+        h += `<div class="perk"><span><b>${pk.name}<span class="pips">${Array.from({ length: pk.max }, (_, i) => `<i class="${i < r ? "on" : ""}"></i>`).join("")}</span></b><span class="sub">${r ? pk.desc(r) : "Next: " + pk.desc(1)}${r && r < pk.max ? ` · next: ${pk.desc(r + 1)}` : ""}</span></span>
+          <span class="btns"><button class="btn small" data-perk="${pk.id}" ${S.perkPts > 0 && r < pk.max ? "" : "disabled"}>+1</button></span></div>`;
+      }
+    }
   }
   if (UI.tab === "policies") h += policiesPane();
   if (UI.tab === "feats") {
@@ -1852,7 +1983,7 @@ function renderPane() {
   p.innerHTML = h;
 }
 function ascendCard() {
-  return `<div class="card cur"><h3>Ascension</h3><p>Reset your level, zones, gear and talents. Keep research and policies. Gain <span class="num">${ascendGain(S)}</span> Xel'Naga essence, each worth +4% damage, health and experience forever.</p><div class="btns" style="justify-content:start"><button class="btn small primary" data-act="ascend">Ascend</button></div></div>`;
+  return `<div class="card cur"><h3>Ascension</h3><p>Reset your level, zones, gear and talents. Keep research and policies. Gain <span class="num">${ascendGain(S)}</span> Xel'Naga essence, each worth +4% damage, health and experience forever, plus one perk point (see Build).</p><div class="btns" style="justify-content:start"><button class="btn small primary" data-act="ascend">Ascend</button></div></div>`;
 }
 function policiesPane() {
   const P = S.pol;
@@ -1875,6 +2006,7 @@ function policiesPane() {
     <div class="pol"><span><b>Boss safety margin</b><small>How much stronger than the boss you must be, by estimate. Higher is safer, lower is faster.</small></span>
       <input type="number" id="polMargin" data-polnum="bossMargin" step="0.1" min="0.5" max="5" value="${P.bossMargin}"></div>
     ${tog("loadout", "Pick abilities", "Slot the strongest three abilities as new ones unlock, keeping one defensive.")}
+    ${tog("perks", "Spend ascension perks", "Spread perk points across the perk tree, lowest rank first. Drops a contract that has stalled for 20 minutes either way.")}
     ${tog("dungeons", "Run dungeons and raids", "Rehearse the newest instance three times in its head and go in if it clears two.")}
     ${tog("advance", "Advance zones", "Move to the next zone once its boss is down and you meet the level.")}
     ${tog("retreat", "Fall back when losing", "After 3 deaths in 5 minutes, farm the previous zone for two levels.")}
@@ -1891,7 +2023,7 @@ function renderLive() {
   $("tXpBar").style.width = (S.level >= MAX_LEVEL ? 100 : S.xp / need * 100) + "%";
   $("tXpWrap").classList.toggle("hot", S.level < MAX_LEVEL && S.xp / need > 0.85);
   const stEl = $("streak"); stEl.hidden = (S.streak || 0) < 3;
-  if (!stEl.hidden) stEl.innerHTML = `Streak <span class="num">×${S.streak}</span> · +${Math.min(S.streak, STREAK_MAX)}%`;
+  if (!stEl.hidden) stEl.innerHTML = `Streak <span class="num">×${S.streak}</span> · +${Math.min(S.streak, streakCap(S))}%`;
   $("tMin").textContent = fmt(S.minerals);
   $("tGas").textContent = fmt(S.gas);
   const hpw = clamp(S.hp / d.hp * 100, 0, 100), shw = clamp((S.shield + S.pshield) / d.hp * 100, 0, 100 - hpw);
@@ -2001,6 +2133,8 @@ $("pane").addEventListener("click", e => {
     if (rank < 10 && S.marks >= cost) { S.marks -= cost; S.comp[id] = { rank: rank + 1 }; bump(); }
   }
   if (t.dataset.tal) { if (S.talPts > 0 && S.tal[t.dataset.tal] < TALENT_MAX) { S.tal[t.dataset.tal]++; S.talPts--; bump(); } }
+  if (t.dataset.perk) { const pk = PERKS.find(x => x.id === t.dataset.perk); if (pk && S.perkPts > 0 && perk(S, pk.id) < pk.max) { S.perks[pk.id] = perk(S, pk.id) + 1; S.perkPts--; log(S, "k", `Perk: ${pk.name} rank ${S.perks[pk.id]}.`); bump(); } }
+  if (t.dataset.skip !== undefined) skipContract(S, +t.dataset.skip, false);
   if (t.dataset.pol) { S.pol[t.dataset.pol] = !S.pol[t.dataset.pol]; bump(); }
   const act = t.dataset.act;
   if (act === "crate") buyCrate(S, false);
@@ -2054,6 +2188,7 @@ function showAway(r) {
       <div><span class="label">Bosses</span><span class="num">${r.bosses}</span></div>
       <div><span class="label">Instances</span><span class="num">${r.runs}</span></div>
       <div><span class="label">Valor</span><span class="num">+${r.marks}</span></div>
+      <div><span class="label">Contracts</span><span class="num">${r.contracts}</span></div>
       <div><span class="label">Feats</span><span class="num">+${r.feats}</span></div>
       <div><span class="label">Best streak</span><span class="num">${r.streak}</span></div>
     </div>
@@ -2619,6 +2754,7 @@ const SFX = {
   die: () => tone({ type: "sawtooth", f: 220, f2: 45, dur: .9, vol: .1 }),
   click: () => tone({ type: "square", f: 900, dur: .03, vol: .04 }),
   promote: () => [392, 494, 587, 784, 988].forEach((f, i) => tone({ type: "triangle", f, dur: .3, vol: .12, delay: i * .1 })),
+  contract: () => [784, 988, 1175].forEach((f, i) => tone({ type: "triangle", f, dur: .18, vol: .08, delay: i * .07 })),
   feat: () => { tone({ f: 988, dur: .15, vol: .08 }); tone({ f: 1319, dur: .3, vol: .08, delay: .12 }); },
   streak: () => [660, 880].forEach((f, i) => tone({ type: "square", f, dur: .1, vol: .05, delay: i * .08 })),
   bounty: () => { tone({ type: "sawtooth", f: 220, f2: 330, dur: .4, vol: .08 }); tone({ type: "sawtooth", f: 330, dur: .4, vol: .06, delay: .3 }); hiss({ filter: "lowpass", freq: 500, dur: .4, vol: .15 }); },
