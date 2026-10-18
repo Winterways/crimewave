@@ -203,6 +203,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .item .sub { display: block; color: var(--mute); font: 11px var(--f-mono); }
 .item .delta { font: 11px var(--f-mono); }
 .up { color: var(--good); } .down { color: var(--hp); }
+.note.good { color: var(--good); } .note.bad { color: var(--hp); }
 .btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: end; }
 .pol { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--plate); padding: 9px 12px; }
 .pol b { font-weight: 600; font-size: 14px; display: block; }
@@ -968,6 +969,27 @@ let uid = 1;
 let S = null;
 const UI = { rev: 1, logRev: 1, feedRev: 1, tab: "quests" };
 const bump = () => UI.rev++;
+// Dungeon forecasts: three rehearsals of a run with the chosen party, computed one at a time off the render path and
+// cached per dungeon, party, level and power so the Dungeons tab can say "cleared 2 of 3" before you press Enter.
+UI.fc = {}; UI.fcQ = []; UI.fcBusy = false;
+function fcKey(i, party) { return `${i}|${party.join(",")}|${S.level}|${Math.round(power(S) / 10)}`; }
+function forecast(i, party) {
+  const k = fcKey(i, party);
+  if (k in UI.fc) return UI.fc[k];
+  if (!UI.fcQ.some(j => j.k === k)) UI.fcQ.push({ k, i, party: party.slice() });
+  if (!UI.fcBusy) { UI.fcBusy = true; setTimeout(forecastPump, 30); }
+  return null;
+}
+function forecastPump() {
+  const job = UI.fcQ.shift();
+  if (!job || !S) { UI.fcBusy = false; return; }
+  if (!(job.k in UI.fc)) {
+    try { UI.fc[job.k] = rehearse(S, job.i, job.party, 3); } catch (e) { UI.fc[job.k] = null; }
+    const keys = Object.keys(UI.fc); if (keys.length > 60) delete UI.fc[keys[0]];
+    bump();
+  }
+  setTimeout(forecastPump, 30);
+}
 
 function newGame(name, race, cls, carry) {
   const s = {
@@ -2200,11 +2222,13 @@ function renderPane() {
       const open = compUnlocked(S, c), on = sel.includes(c.id);
       h += `<button class="chip" data-party="${c.id}" aria-pressed="${on}" ${!open || (!on && sel.length >= 2) || S.run ? "disabled" : ""}>${open ? esc(c.name) : "Locked"} · ${ROLE_LABEL[c.role]}</button>`;
     }
-    h += `</div><p>${S.partySel ? "Your pick." : "Autopilot's pick: a tank and a healer when you have them, then damage."}</p></div>`;
+    const roles = sel.map(id => COMPANIONS.find(c => c.id === id).role);
+    h += `</div><p>${S.partySel ? "Your pick." : "Autopilot's pick: a tank and a healer when you have them, then damage."}</p>${sel.length && !roles.includes("tank") && !roles.includes("healer") ? `<p class="note bad">No tank or healer: two damage dealers rarely survive an instance.</p>` : ""}</div>`;
     DUNGEONS.forEach((dg, i) => {
       const why = dungeonReady(S, i), open = !!S.bosses[dg.zone];
       h += `<div class="card ${open ? "" : "locked"}"><div class="row"><h3>${dg.name} ${dg.raid ? '<span class="role raidtag">Raid</span>' : ""}</h3><span class="num">Lv ${dLevel(dg)}</span></div>
         <p>${open ? dg.blurb : why}</p>${open ? `<p>${dg.enc.length} encounters, then ${dg.boss.name}. ${dg.raid ? "Needs 2 companions. Epic loot or better from the final boss." : "Rare loot or better from the boss."}</p>` : ""}
+        ${open && !why && !S.run && Math.abs(dLevel(dg) - S.level) <= 8 ? (fc => `<p class="note ${fc == null ? "" : fc >= 2 ? "good" : fc === 1 ? "" : "bad"}">${fc == null ? "Rehearsing with the chosen party…" : `Rehearsal: cleared ${fc} of 3 ${sel.length ? "with " + sel.map(id => COMPANIONS.find(c => c.id === id).name).join(" and ") : "alone"}. Autopilot goes in at 2 of 3.`}</p>`)(forecast(i, sel)) : ""}
         ${open ? `<div class="row"><span class="note">${why || "Ready"}</span><button class="btn small" data-enter="${i}" ${why || S.run || S.mode === "fight" || (dg.raid && sel.length < 2) ? "disabled" : ""}>Enter</button></div>` : ""}</div>`;
     });
     h += `<h3 class="label" style="margin-top:6px">Companions</h3>`;
