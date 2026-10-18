@@ -999,7 +999,7 @@ function forecastPump() {
   const job = UI.fcQ.shift();
   if (!job || !S) { UI.fcBusy = false; return; }
   if (!(job.k in UI.fc)) {
-    try { UI.fc[job.k] = rehearse(S, job.i, job.party, 3); } catch (e) { UI.fc[job.k] = null; }
+    try { UI.fc[job.k] = rehearse(S, job.i, job.party, REHEARSALS); } catch (e) { UI.fc[job.k] = null; }
     const keys = Object.keys(UI.fc); if (keys.length > 60) delete UI.fc[keys[0]];
     bump();
   }
@@ -1109,7 +1109,7 @@ function refHero(L) {
 }
 function foeStats(L, e, boss) {
   const r = refHero(L);
-  const green = boss ? 1 : Math.min(1, 0.78 + 0.055 * (L - 1)); // the first few levels are a power fantasy: softer foes, fewer rests
+  const green = boss ? 1 : Math.min(1, 0.72 + 0.04 * (L - 1)); // levels 1 to 7 are a power fantasy: softer foes, fewer rests, fewer deaths
   return {
     hp: r.dps * 7.5 * (1 - dr(L * 1.2, L)) ** -1 * (e.hp || 1) * (boss ? 7 : 1) * green,
     atk: r.hp * 0.05 / (1 - dr(r.def, L)) * (e.atk || 1) / (e.aspd || 1) * (boss ? 1.25 : 1) * green,
@@ -1118,7 +1118,7 @@ function foeStats(L, e, boss) {
 }
 function spawnFoe(s, boss) {
   const z = zoneOf(s);
-  const L = boss ? z.max : clamp(s.level + ri(-1, 1), z.min, z.max);
+  const L = boss ? z.max : clamp(s.level + ri(-1, s.level < 6 ? 0 : 1), z.min, z.max); // no higher-level foes before level 6: a level-5 raider killed level-4 ghosts
   const idx = boss ? -1 : Math.floor(rnd() * z.foes.length);
   const e = boss ? z.boss : z.foes[idx];
   const f = foeStats(L, e, boss);
@@ -1418,11 +1418,12 @@ function gainItem(s, it) {
 }
 
 // Break off a losing fight against an ordinary enemy. Not in instances or against bosses; one escape a minute.
+const FLEE_CD = 40;
 function canFlee(s) { return s.mode === "fight" && s.foe && !s.foe.boss && !s.run && (s.fleeCd || 0) <= s.stats.played; }
 function flee(s, byAI) {
   if (!canFlee(s)) return false;
   const f = s.foe;
-  s.fleeCd = s.stats.played + 60; s.stats.flees = (s.stats.flees || 0) + 1;
+  s.fleeCd = s.stats.played + FLEE_CD; s.stats.flees = (s.stats.flees || 0) + 1;
   s.foe = null; s.mode = "rest"; s.restGoal = Math.max(s.pol.restTo, 70); s.timer = 1;
   endStreak(s, "fled");
   fx(s, "flee");
@@ -1549,6 +1550,8 @@ function failRun(s) {
 }
 function leaveRun(s) { if (!s.run) return; log(s, "k", `You leave ${DUNGEONS[s.run.d].name}.`); s.run = null; s.foe = null; s.mode = auto(s, "engage") ? "seek" : "idle"; s.timer = 1; bump(); }
 // Rehearse a full run on a copy of the hero and report how many of n attempts were cleared.
+// Five rehearsals, four must clear: with three-of-three-or-two the autopilot walked into coin-flip bosses and wiped half the time.
+const REHEARSALS = 5, REHEARSE_PASS = 4;
 function rehearse(s, i, party, n) {
   let wins = 0;
   for (let k = 0; k < n; k++) {
@@ -1738,9 +1741,9 @@ function autopilot(s, d) {
       const dg = DUNGEONS[i], party = (s.partySel && s.partySel.length >= (dg.raid ? 2 : 1)) ? s.partySel.filter(id => COMPANIONS.some(c => c.id === id && compUnlocked(s, c))) : bestParty(s);
       if (s.level < dLevel(dg) - 4 || s.level > dLevel(dg) + 4) continue; // too hard to try, or too easy to be worth it
       if (party.length < (dg.raid ? 2 : 1)) continue;
-      const wins = rehearse(s, i, party, 3);
-      if (wins >= 2) {
-        decide(s, dg.raid ? "Raid" : "Dungeon", `Rehearsed ${dg.name} 3 times with ${party.map(id => COMPANIONS.find(c => c.id === id).name).join(" and ")}: cleared ${wins}. Going in.`);
+      const wins = rehearse(s, i, party, REHEARSALS);
+      if (wins >= REHEARSE_PASS) {
+        decide(s, dg.raid ? "Raid" : "Dungeon", `Rehearsed ${dg.name} ${REHEARSALS} times with ${party.map(id => COMPANIONS.find(c => c.id === id).name).join(" and ")}: cleared ${wins}. Going in.`);
         if (P.stims && dg.raid) useStim(s, true);
         enterRun(s, i, party);
         return;
@@ -2252,7 +2255,7 @@ function renderPane() {
       const why = dungeonReady(S, i), open = !!S.bosses[dg.zone];
       h += `<div class="card ${open ? "" : "locked"}"><div class="row"><h3>${dg.name} ${dg.raid ? '<span class="role raidtag">Raid</span>' : ""}</h3><span class="num">Lv ${dLevel(dg)}</span></div>
         <p>${open ? dg.blurb : why}</p>${open ? `<p>${dg.enc.length} encounters, then ${dg.boss.name}. ${dg.raid ? "Needs 2 companions. Epic loot or better from the final boss." : "Rare loot or better from the boss."}</p>` : ""}
-        ${open && !why && !S.run && Math.abs(dLevel(dg) - S.level) <= 8 ? (fc => `<p class="note ${fc == null ? "" : fc >= 2 ? "good" : fc === 1 ? "" : "bad"}">${fc == null ? "Rehearsing with the chosen party…" : `Rehearsal: cleared ${fc} of 3 ${sel.length ? "with " + sel.map(id => COMPANIONS.find(c => c.id === id).name).join(" and ") : "alone"}. Autopilot goes in at 2 of 3.`}</p>`)(forecast(i, sel)) : ""}
+        ${open && !why && !S.run && Math.abs(dLevel(dg) - S.level) <= 8 ? (fc => `<p class="note ${fc == null ? "" : fc >= REHEARSE_PASS ? "good" : fc >= 2 ? "" : "bad"}">${fc == null ? "Rehearsing with the chosen party…" : `Rehearsal: cleared ${fc} of ${REHEARSALS} ${sel.length ? "with " + sel.map(id => COMPANIONS.find(c => c.id === id).name).join(" and ") : "alone"}. Autopilot goes in at ${REHEARSE_PASS} of ${REHEARSALS}.`}</p>`)(forecast(i, sel)) : ""}
         ${open ? `<div class="row"><span class="note">${why || "Ready"}</span><button class="btn small" data-enter="${i}" ${why || S.run || S.mode === "fight" || (dg.raid && sel.length < 2) ? "disabled" : ""}>Enter</button></div>` : ""}</div>`;
     });
     h += `<h3 class="label" style="margin-top:6px">Companions</h3>`;
@@ -2363,7 +2366,7 @@ function policiesPane() {
     ${tog("abilities", "Use abilities", "Fire abilities on cooldown, holding a defensive one in reserve when health drops.")}
     <div class="pol"><span><b>Rest below</b><small>Stop between fights when health falls under this, then rest up to the second value.</small></span>
       <span class="btns"><input type="number" id="polRestAt" data-polnum="restAt" min="0" max="95" value="${P.restAt}"><input type="number" id="polRestTo" data-polnum="restTo" min="30" max="100" value="${P.restTo}"></span></div>
-    <div class="pol"><span><b>Flee below</b><small>Break off a losing fight against an ordinary enemy under this much health (never bosses or instances; once a minute), then rest.</small></span>
+    <div class="pol"><span><b>Flee below</b><small>Break off a losing fight against an ordinary enemy under this much health (never bosses or instances; at most every 40 s), then rest.</small></span>
       <span class="btns"><button class="switch" role="switch" data-pol="flee" aria-checked="${!!P.flee}" aria-label="Flee"></button><input type="number" id="polFleeAt" data-polnum="fleeAt" min="5" max="60" value="${P.fleeAt}"></span></div>
     ${tog("equip", "Equip upgrades", "Swap in any item that raises your overall power.")}
     <div class="pol"><span><b>Auto-sell weaker gear</b><small>Sell items that are not upgrades, up to this rarity.</small></span>
@@ -2379,7 +2382,7 @@ function policiesPane() {
       <input type="number" id="polMargin" data-polnum="bossMargin" step="0.1" min="0.5" max="5" value="${P.bossMargin}"></div>
     ${tog("loadout", "Pick abilities", "Slot the strongest three abilities as new ones unlock, keeping one defensive.")}
     ${tog("perks", "Spend ascension perks", "Spread perk points across the perk tree, lowest rank first. Drops a contract that has stalled for 20 minutes either way.")}
-    ${tog("dungeons", "Run dungeons and raids", "Rehearse the newest instance three times in its head and go in if it clears two.")}
+    ${tog("dungeons", "Run dungeons and raids", "Rehearse the newest instance five times in its head and go in if it clears four.")}
     ${tog("advance", "Advance zones", "Move to the next zone once its boss is down and you meet the level. Zone plans on the Map tab can hold you in a zone or add mining there.")}
     ${tog("retreat", "Fall back when losing", "After 3 deaths in 5 minutes, farm the previous zone for two levels.")}
     ${tog("ascend", "Auto-ascend", "Ascend as soon as Amon is defeated.")}`;
