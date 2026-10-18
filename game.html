@@ -227,6 +227,32 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .chip:disabled { opacity: .4; cursor: not-allowed; }
 .raidtag { color: var(--r-legendary); }
 
+/* feel: pulses, loot cards, streak */
+@keyframes pulse { 0% { transform: scale(1); color: var(--good); } 40% { transform: scale(1.25); color: var(--good); } 100% { transform: scale(1); } }
+.pulse { animation: pulse .7s ease-out; display: inline-block; }
+@keyframes slotflash { 0% { background: var(--acc-dim); box-shadow: inset 0 0 0 1px var(--acc); } 100% { background: var(--plate); } }
+.slot.flash { animation: slotflash 1.6s ease-out; }
+.bar.xp > i { transition: width .2s linear, box-shadow .3s; }
+.bar.xp.hot > i { box-shadow: 0 0 10px 2px var(--xp); }
+.streak { font: 600 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--warn); }
+.streak .num { font-size: 15px; color: var(--ink); }
+.rank { color: var(--acc); }
+#lootStack { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 6px; z-index: 30; max-width: min(340px, calc(100vw - 32px)); pointer-events: none; }
+.lootcard { background: var(--plate-2); border: 1px solid var(--line); border-left: 3px solid var(--lc, var(--acc)); padding: 8px 12px; font-size: 13px; display: grid; gap: 2px; animation: lootin .35s ease-out; box-shadow: 0 0 18px -6px var(--lc, var(--acc)); }
+.lootcard b { color: var(--lc, var(--ink)); }
+.lootcard small { color: var(--mute); font-family: var(--f-mono); font-size: 11px; }
+.lootcard .up { font-weight: 600; }
+.lootcard.out { animation: lootout .4s ease-in forwards; }
+@keyframes lootin { from { transform: translateX(-20px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes lootout { to { transform: translateX(-20px); opacity: 0; } }
+.feat { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--plate); padding: 8px 10px; font-size: 13px; }
+.feat.done { border-left: 2px solid var(--good); }
+.feat.todo { opacity: .7; }
+.feat .mark { width: 16px; height: 16px; border: 1px solid var(--line); display: grid; place-items: center; font-size: 11px; color: var(--good); }
+.feat.done .mark { border-color: var(--good); }
+.feat .sub { display: block; color: var(--mute); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .pulse, .slot.flash, .lootcard { animation: none !important; } }
+
 /* decisions feed */
 .feed { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; font-size: 13px; }
 .feed p { margin: 0; display: grid; grid-template-columns: 74px 92px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -275,7 +301,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
     <div class="who"><b id="tName">—</b><small id="tClass">—</small></div>
     <div class="xpbox">
       <div class="barrow"><div class="lbl"><span>Level <span class="num" id="tLevel">1</span></span><span class="num" id="tXp">0 / 0</span></div>
-      <div class="bar" style="--c:var(--xp)"><i id="tXpBar"></i></div></div>
+      <div class="bar xp" id="tXpWrap" style="--c:var(--xp)"><i id="tXpBar"></i></div></div>
     </div>
     <div class="res">
       <div><span class="label">Minerals</span><span class="num" id="tMin">0</span></div>
@@ -316,7 +342,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
         <div class="unit foe" id="aFoe"><h3 id="aFoeName">No contact</h3><div class="meta" id="aFoeMeta">Scanning the area</div>
           <div class="bar tall" style="--c:var(--hp)"><i id="aFoeHp"></i></div></div>
       </div>
-      <div class="modeline" id="modeLine"></div>
+      <div class="row" style="margin-top:10px"><div class="modeline" id="modeLine" style="margin:0"></div><span class="streak" id="streak" hidden></span></div>
       <div class="abilities" id="abilities"></div>
       <div class="actions">
         <button class="btn" id="engageBtn">Engage</button>
@@ -343,6 +369,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
 
 <div id="modal" hidden><div class="panel" id="modalBody"></div></div>
 <div class="float" id="toast" hidden></div>
+<div id="lootStack" aria-live="polite"></div>
 
 <script>
 "use strict";
@@ -625,6 +652,46 @@ const profLvl = (s, k) => (s.prof && s.prof[k] ? s.prof[k].lvl : 1);
 const CRAFT_TIERS = [{ lvl: 1, rarity: 1 }, { lvl: 15, rarity: 2 }, { lvl: 30, rarity: 3 }, { lvl: 45, rarity: 3, legend: 0.15 }];
 const STIM_DUR = 600;
 
+// Ranks: a title every five levels, per race.
+const RANKS = {
+  terran: ["Recruit", "Private", "Corporal", "Sergeant", "Lieutenant", "Captain", "Major", "Colonel", "General"],
+  protoss: ["Initiate", "Khalai", "Zealot of Adun", "Templar", "Praetor", "High Templar", "Prelate", "Executor", "Hierarch"],
+  zerg: ["Larva", "Hatchling", "Strain", "Hunter Killer", "Brood Leader", "Overseer", "Brood Mother", "Primal", "Swarm Prime"],
+};
+const rankIdx = L => Math.min(8, Math.floor((L - 1) / 5));
+const rankName = s => RANKS[s.race][rankIdx(s.level)];
+const STREAK_MAX = 30; // +1% xp and minerals per kill in a row, up to +30%
+const BOUNTY_TITLES = ["Overseer", "Warlord", "Alpha", "Elder", "Veteran", "Champion"];
+// Feats: checklist of milestones, each paying Valor (and some a crate).
+const FEATS = [
+  { id: "first", name: "First Blood", desc: "Destroy an enemy", valor: 2, test: s => s.stats.kills >= 1 },
+  { id: "k100", name: "Centurion", desc: "100 kills", valor: 5, test: s => s.stats.kills >= 100 },
+  { id: "k1000", name: "Hecatomb", desc: "1,000 kills", valor: 15, crate: true, test: s => s.stats.kills >= 1000 },
+  { id: "k5000", name: "Extinction Event", desc: "5,000 kills", valor: 40, crate: true, test: s => s.stats.kills >= 5000 },
+  { id: "l10", name: "Battle Hardened", desc: "Reach level 10", valor: 5, test: s => s.level >= 10 },
+  { id: "l20", name: "Veteran", desc: "Reach level 20", valor: 10, crate: true, test: s => s.level >= 20 },
+  { id: "l30", name: "Elite", desc: "Reach level 30", valor: 15, crate: true, test: s => s.level >= 30 },
+  { id: "l40", name: "Apex", desc: "Reach level 40", valor: 25, crate: true, test: s => s.level >= 40 },
+  { id: "boss1", name: "Brood Breaker", desc: "Defeat Brood Mother Ixtha", valor: 5, test: s => !!s.bosses[0] },
+  { id: "boss4", name: "Mind Killer", desc: "Defeat the Overmind", valor: 15, test: s => !!s.bosses[3] },
+  { id: "boss8", name: "God Slayer", desc: "Defeat Amon", valor: 40, crate: true, test: s => !!s.bosses[7] },
+  { id: "run1", name: "Delver", desc: "Clear an instance", valor: 5, test: s => (s.stats.runs || 0) >= 1 },
+  { id: "run10", name: "Dungeon Master", desc: "Clear 10 instances", valor: 15, test: s => (s.stats.runs || 0) >= 10 },
+  { id: "raid", name: "Raid Leader", desc: "Clear a raid", valor: 20, crate: true, test: s => (s.stats.raids || 0) >= 1 },
+  { id: "epic", name: "Collector", desc: "Find an epic item", valor: 5, test: s => (s.stats.bestRarity || 0) >= 3 },
+  { id: "legend", name: "Legend", desc: "Find a legendary item", valor: 20, test: s => (s.stats.bestRarity || 0) >= 4 },
+  { id: "streak10", name: "Unstoppable", desc: "A 10-kill streak", valor: 5, test: s => (s.bestStreak || 0) >= 10 },
+  { id: "streak30", name: "Juggernaut", desc: "A 30-kill streak", valor: 15, crate: true, test: s => (s.bestStreak || 0) >= 30 },
+  { id: "bounty", name: "Bounty Hunter", desc: "Bring down a bounty target", valor: 5, test: s => (s.stats.bounties || 0) >= 1 },
+  { id: "bounty10", name: "Most Wanted", desc: "10 bounty targets", valor: 15, test: s => (s.stats.bounties || 0) >= 10 },
+  { id: "craft", name: "Tinkerer", desc: "Craft 10 items", valor: 10, test: s => (s.stats.crafted || 0) >= 10 },
+  { id: "mine", name: "Prospector", desc: "Mine 2,000 minerals", valor: 10, test: s => (s.stats.mined || 0) >= 2000 },
+  { id: "bond", name: "Brothers in Arms", desc: "Bond a companion to rank 5", valor: 10, test: s => Object.values(s.comp).some(c => c.rank >= 5) },
+  { id: "survivor", name: "Hard to Kill", desc: "Fall 10 times and keep going", valor: 5, test: s => s.stats.deaths >= 10 },
+  { id: "marathon", name: "Marathon", desc: "10 hours played", valor: 15, test: s => (s.stats.totalPlayed || 0) >= 36000 },
+  { id: "ascend", name: "Xel'Naga Touched", desc: "Ascend", valor: 30, crate: true, test: s => s.ascensions >= 1 },
+];
+
 const DEFAULT_POL = {
   autopilot: true, engage: true, abilities: true, restAt: 40, restTo: 95,
   equip: true, sell: 2, talents: true, upgrades: true, crates: true,
@@ -664,8 +731,9 @@ function newGame(name, race, cls, carry) {
     tal: Object.fromEntries(TALENTS.map(t => [t.id, 0])), talPts: 0,
     pol: { ...DEFAULT_POL, ...(carry?.pol || {}) },
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
+    streak: 0, bestStreak: carry?.bestStreak || 0, feats: carry?.feats || {}, nextBounty: 480 + rnd() * 300,
     prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0,
-    deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed } : {}) },
+    deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed, bounties: carry.stats.bounties, crafted: carry.stats.crafted, mined: carry.stats.mined, raids: carry.stats.raids, bestRarity: carry.stats.bestRarity } : {}) },
     log: [], feed: [], lastSeen: Date.now(),
   };
   s.gear.weapon = makeItem(s, "weapon", 1, 0);
@@ -764,7 +832,16 @@ function spawnFoe(s, boss) {
   const idx = boss ? -1 : Math.floor(rnd() * z.foes.length);
   const e = boss ? z.boss : z.foes[idx];
   const f = foeStats(L, e, boss);
-  return { name: e.name, title: boss ? z.boss.title : "", idx, L, hp: f.hp, max: f.hp, atk: f.atk, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss: !!boss };
+  const foe = { name: e.name, title: boss ? z.boss.title : "", idx, L, hp: f.hp, max: f.hp, atk: f.atk, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss: !!boss };
+  // every so often an elite bounty target shows up: tougher, triple rewards, guaranteed rare loot
+  if (!boss && s.stats.played >= (s.nextBounty || 0) && s.level >= 3) {
+    s.nextBounty = s.stats.played + 480 + rnd() * 420;
+    foe.elite = true; foe.title = "Bounty target"; foe.name = `${pick(BOUNTY_TITLES)} ${e.name}`;
+    foe.hp *= 2.2; foe.max = foe.hp; foe.atk *= 1.25;
+    log(s, "w", `Bounty target sighted: ${foe.name}!`);
+    fx(s, "banner", { lines: ["BOUNTY", foe.name], col: "#ffd84a", snd: "bounty" });
+  }
+  return foe;
 }
 
 /* ============================================================================
@@ -829,7 +906,7 @@ function step(s, dt) {
   }
 
   s.decT -= dt;
-  if (s.decT <= 0) { s.decT = 1; if (s.pol.autopilot) autopilot(s, d); }
+  if (s.decT <= 0) { s.decT = 1; checkFeats(s); if (s.pol.autopilot) autopilot(s, d); }
 }
 
 function heroHit(s, d, mult, forceCrit, ability) {
@@ -937,9 +1014,15 @@ function killFoe(s, d) {
   const diff = f.L - s.level;
   const xpMod = clamp(1 + diff * (diff > 0 ? 0.1 : 0.15), 0.3, 1.5);
   const ess = 1 + 0.04 * s.essence;
-  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1);
-  let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4);
+  s.streak = (s.streak || 0) + 1;
+  if (s.streak > (s.bestStreak || 0)) s.bestStreak = s.streak;
+  const streakMul = 1 + Math.min(s.streak, STREAK_MAX) * 0.01;
+  if (s.streak === 10 || s.streak === 20 || s.streak === STREAK_MAX) fx(s, "banner", { lines: [`${s.streak} KILL STREAK`, `+${Math.min(s.streak, STREAK_MAX)}% xp and minerals`], col: "#e8b43c", snd: "streak", small: true });
+  const eliteMul = f.elite ? 3 : 1;
+  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul;
+  let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4) * streakMul * eliteMul;
   let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 ? 1 + Math.floor(f.L * 0.15) : 0;
+  if (f.elite) { gas += 3 + Math.floor(f.L / 5); s.stats.bounties = (s.stats.bounties || 0) + 1; }
   s.minerals += min; s.gas += gas;
   if (f.boss) { const n = f.raid ? 3 : f.run ? 2 : 1; s.mats.cores += n; log(s, "w", `+${n} ${PROF_NAMES[s.race].cores}.`); }
   else if (rnd() < 0.08) { s.mats.shards += 1 + Math.floor(f.L / 15); }
@@ -947,12 +1030,13 @@ function killFoe(s, d) {
   log(s, "g", `${f.name} destroyed. +${fmt(xp)} xp, +${fmt(min)} minerals${gas ? `, +${gas} gas` : ""}.`);
   gainXp(s, xp);
   // loot
-  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || rnd() < (f.run ? 0.35 : 0.16) ? 1 : 0;
+  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || rnd() < (f.run ? 0.35 : 0.16) ? 1 : 0;
   for (let i = 0; i < drops; i++) {
-    const floor = f.raid && f.boss ? 3 : f.boss ? 2 : 0;
+    const floor = f.raid && f.boss ? 3 : f.boss || f.elite ? 2 : 0;
     const rarity = Math.max(floor, rollRarity(f.raid ? 4 : f.boss || f.run ? 2 : 0));
     gainItem(s, makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, f.L), rarity));
   }
+  checkFeats(s);
   if (f.run) return runProgress(s, f);
   // quests
   const q = questState(s, s.zone);
@@ -988,10 +1072,24 @@ function gainXp(s, xp) {
   if (s.level >= MAX_LEVEL) return;
   s.xp += xp;
   while (s.level < MAX_LEVEL && s.xp >= xpNext(s.level)) {
+    const before = derive(s), oldRank = rankIdx(s.level);
     s.xp -= xpNext(s.level); s.level++; s.talPts++;
-    s.hp = derive(s).hp;
-    log(s, "w", `Level up! You are now level ${s.level}.`);
+    const after = derive(s);
+    s.hp = after.hp; s.en = 100;
+    // a surge of power for the next 20 seconds, so a level-up is felt in the fight, not only read
+    s.buffs = s.buffs.filter(b => b.id !== "surge");
+    s.buffs.push({ id: "surge", t: 20, buff: { atk: 0.3, aspd: 0.3 } });
+    const gains = [`+${fmt(after.atk - before.atk)} damage`, `+${fmt(after.hp - before.hp)} health`, "+1 talent point"];
+    log(s, "w", `Level up! You are now level ${s.level}. ${gains.join(", ")}. Power surges for 20s.`);
     fx(s, "level");
+    fx(s, "banner", { lines: [`LEVEL ${s.level}`, gains.join(" · ")], col: "#ffd84a", snd: null });
+    if (rankIdx(s.level) > oldRank) {
+      const r = rankName(s);
+      log(s, "w", `Promoted to ${r}! A supply crate arrives.`);
+      fx(s, "banner", { lines: [`PROMOTED: ${r.toUpperCase()}`, "A supply crate arrives"], col: "#9ad9ff", snd: "promote", delay: 2.2 });
+      gainItem(s, makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, s.level), Math.max(2, rollRarity(1))));
+    }
+    checkFeats(s);
     bump();
   }
   if (s.level >= MAX_LEVEL) s.xp = 0;
@@ -999,7 +1097,9 @@ function gainXp(s, xp) {
 
 function gainItem(s, it) {
   s.stats.items++;
+  if (it.rarity > (s.stats.bestRarity || 0)) s.stats.bestRarity = it.rarity;
   fx(s, "loot", { rarity: it.rarity });
+  if (s === S && !SIMULATING && (it.rarity >= 2 || itemGain(s, it) > 0.001)) lootCard(it, itemGain(s, it));
   log(s, "r" + it.rarity, `Loot: ${it.name}.`);
   s.bag.push(it);
   if (s.bag.length > 24) {
@@ -1011,8 +1111,13 @@ function gainItem(s, it) {
   bump();
 }
 
+function endStreak(s, why) {
+  if ((s.streak || 0) >= 5) log(s, "k", `Kill streak of ${s.streak} ended (${why}).`);
+  s.streak = 0;
+}
 function heroDies(s) {
   s.hp = 0; s.mode = "dead"; s.timer = 8; s.shield = 0;
+  endStreak(s, "defeated");
   fx(s, "die");
   const wasBoss = s.foe && s.foe.boss;
   log(s, "h", `You were defeated by ${s.foe ? s.foe.name : "the enemy"}.`);
@@ -1102,7 +1207,7 @@ function runProgress(s, f) {
     const marks = (dg.raid ? 20 : 6) + dg.zone * 2;
     s.marks += marks;
     s.dcd[s.run.d] = (s.stats.totalPlayed || 0) + (dg.raid ? RAID_LOCK : D_LOCK);
-    s.stats.runs = (s.stats.runs || 0) + 1;
+    s.stats.runs = (s.stats.runs || 0) + 1; if (dg.raid) s.stats.raids = (s.stats.raids || 0) + 1;
     log(s, "w", `${dg.name} cleared! +${marks} Valor.`);
     decide(s, dg.raid ? "Raid" : "Dungeon", `Cleared ${dg.name}. Earned ${marks} Valor.`);
     s.run = null; bump();
@@ -1170,7 +1275,7 @@ function startBoss(s) {
 }
 function travel(s, z, why) {
   if (s.run) return;
-  s.zone = z; s.foe = null; s.mode = "seek"; s.timer = 2; s.seen[z] = true;
+  s.zone = z; s.foe = null; s.mode = "seek"; s.timer = 2; s.seen[z] = true; endStreak(s, "travelled");
   log(s, "w", `Travelling to ${ZONES[z].name}.`);
   if (why) decide(s, "Travel", why);
   bump();
@@ -1180,7 +1285,7 @@ function autopilot(s, d) {
   const P = s.pol, z = zoneOf(s);
   // 1. rest
   if (P.engage && (s.mode === "seek" || s.mode === "idle") && (s.hp < d.hp * P.restAt / 100 || (s.run && s.run.party.some(m => m.hp < m.max * P.restAt / 100)))) {
-    s.mode = "rest";
+    s.mode = "rest"; endStreak(s, "rested");
     log(s, "k", `Autopilot: health at ${Math.round(s.hp / d.hp * 100)}%, below the ${P.restAt}% threshold. Resting to ${P.restTo}%.`);
   }
   // 1b. rest up first when a boss or instance is wanted but health is not full enough
@@ -1198,6 +1303,7 @@ function autopilot(s, d) {
         const old = s.gear[it.slot];
         s.gear[it.slot] = it; s.bag.splice(s.bag.indexOf(it), 1);
         if (old) s.bag.push(old);
+        if (s === S) UI.flashSlot = it.slot;
         decide(s, "Gear", `Equipped ${it.name} over ${old ? old.name : "an empty slot"} (+${(g * 100).toFixed(1)}% power).`);
         bump();
       }
@@ -1323,6 +1429,19 @@ function autopilot(s, d) {
   if (P.ascend && s.bosses[ZONES.length - 1]) ascend();
 }
 
+/* ---------- feats ---------- */
+function checkFeats(s) {
+  for (const f of FEATS) {
+    if (s.feats[f.id] || !f.test(s)) continue;
+    s.feats[f.id] = Math.floor(s.stats.totalPlayed || 0) || 1;
+    s.marks += f.valor;
+    log(s, "w", `Feat: ${f.name}. +${f.valor} Valor${f.crate ? " and a supply crate" : ""}.`);
+    fx(s, "banner", { lines: [`FEAT: ${f.name.toUpperCase()}`, `${f.desc} · +${f.valor} Valor`], col: "#5fcf6a", snd: "feat", small: true, delay: 1 });
+    if (f.crate) gainItem(s, makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, Math.max(s.level, zoneOf(s).min)), Math.max(2, rollRarity(1))));
+    bump();
+  }
+}
+
 /* ---------- professions ---------- */
 function profGain(s, k, xp) {
   const pr = s.prof[k];
@@ -1345,7 +1464,7 @@ function mineTick(s, d, dt) {
   s.hp = Math.min(d.hp, s.hp + d.hp * 0.02 * dt);
   while (s.mineT >= 1) {
     s.mineT -= 1;
-    s.minerals += mineRate(s);
+    s.minerals += mineRate(s); s.stats.mined = (s.stats.mined || 0) + mineRate(s);
     if (rnd() < 0.15 + 0.004 * profLvl(s, "mining")) { s.mats.shards += 1 + (rnd() < 0.3 ? 1 : 0); fx(s, "shard"); }
     profGain(s, "mining", 2 + zoneOf(s).max * 0.3);
     if (s.mineFor !== undefined) s.mineFor -= 1;
@@ -1354,7 +1473,7 @@ function mineTick(s, d, dt) {
 }
 function startMining(s, seconds) {
   if (s.mode === "fight" || s.mode === "dead" || s.run) return false;
-  s.mode = "mine"; s.foe = null; s.mineFor = seconds; bump();
+  s.mode = "mine"; s.foe = null; s.mineFor = seconds; endStreak(s, "went mining"); bump();
   return true;
 }
 function craftTier(s) { const lvl = profLvl(s, "craft"); let t = CRAFT_TIERS[0]; for (const x of CRAFT_TIERS) if (lvl >= x.lvl) t = x; return t; }
@@ -1368,7 +1487,7 @@ function craftItem(s, slot, byAI) {
   if (t.legend && rnd() < t.legend) rarity = 4;
   const it = makeItem(s, slot, Math.min(MAX_LEVEL, s.level + 1), rarity);
   it.crafted = true;
-  profGain(s, "craft", 40 + s.level * 4);
+  profGain(s, "craft", 40 + s.level * 4); s.stats.crafted = (s.stats.crafted || 0) + 1;
   if (byAI) decide(s, "Craft", `Crafted ${it.name} for ${c.scrap} ${PROF_NAMES[s.race].scrap}${c.cores ? " and a core" : ""}.`);
   else log(s, "w", `Crafted ${it.name}.`);
   gainItem(s, it);
@@ -1426,7 +1545,7 @@ function ascend() {
   if (!S.bosses[ZONES.length - 1]) return;
   if (S.run) leaveRun(S);
   const gain = ascendGain(S);
-  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats };
+  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats, feats: S.feats, bestStreak: S.bestStreak };
   S = newGame(S.name, S.race, S.cls, carry);
   log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience).`);
   decide(S, "Ascend", `Ascension ${S.ascensions}: kept research and gained ${gain} Xel'Naga essence.`);
@@ -1435,11 +1554,11 @@ function ascend() {
 
 /* ---------- offline / catch-up ---------- */
 function simulate(s, seconds) {
-  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks };
+  const before = { level: s.level, kills: s.stats.kills, min: s.minerals, gas: s.gas, items: s.stats.items, bosses: s.stats.bosses, deaths: s.stats.deaths, zone: s.zone, runs: s.stats.runs || 0, marks: s.marks, feats: Object.keys(s.feats || {}).length };
   const dt = seconds > 3600 ? 1 : 0.5; let t = 0;
   SIMULATING = true;
   try { while (t < seconds) { step(s, Math.min(dt, seconds - t)); t += dt; } } finally { SIMULATING = false; FXQ.length = 0; }
-  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks };
+  return { seconds, levels: s.level - before.level, kills: s.stats.kills - before.kills, minerals: s.minerals - before.min, gas: s.gas - before.gas, items: s.stats.items - before.items, bosses: s.stats.bosses - before.bosses, deaths: s.stats.deaths - before.deaths, zone: s.zone !== before.zone ? ZONES[s.zone].name : null, runs: (s.stats.runs || 0) - before.runs, marks: s.marks - before.marks, feats: Object.keys(s.feats || {}).length - before.feats, streak: s.bestStreak || 0 };
 }
 const OFFLINE_CAP = 8 * 3600;
 
@@ -1486,7 +1605,7 @@ function hydrate(o) {
   o.loadout = Array.isArray(o.loadout) ? [...new Set(o.loadout.filter(i => Number.isInteger(i) && i >= 0 && i < nAb))].slice(0, 3) : [];
   if (!o.loadout.length) o.loadout = [0, 1, 2];
   o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0;
-  o.marks = num(o.marks, 0, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
+  o.marks = num(o.marks, 0, 0); o.streak = num(o.streak, 0, 0); o.bestStreak = num(o.bestStreak, 0, 0); o.feats = o.feats || {}; o.nextBounty = num(o.nextBounty, (o.stats.played || 0) + 300, 0); o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
   o.pol = { ...DEFAULT_POL, ...(o.pol || {}) };
   o.pol.restAt = num(o.pol.restAt, 40, 0, 95); o.pol.restTo = num(o.pol.restTo, 95, 30, 100); o.pol.bossMargin = num(o.pol.bossMargin, 1.3, 0.5, 5);
   o.seen = o.seen || { 0: true }; o.seen[o.zone] = true;
@@ -1504,6 +1623,15 @@ function importSave(str) {
    ========================================================================== */
 const $ = id => document.getElementById(id);
 let toastT = 0;
+function lootCard(it, gain) {
+  const st = $("lootStack"); if (!st) return;
+  const el = document.createElement("div");
+  el.className = "lootcard"; el.style.setProperty("--lc", RCOL[it.rarity]);
+  el.innerHTML = `<b>${icon(slotIcon(it.slot, S.race), RCOL[it.rarity], 14)} ${esc(it.name)}</b><small>${RARITY[it.rarity].name} ${SLOT_LABEL[it.slot].toLowerCase()} · ${itemLine(it)}</small>${gain > 0.001 ? `<span class="up">+${(gain * 100).toFixed(1)}% power${S.pol.autopilot && S.pol.equip ? ", equipping" : ""}</span>` : ""}`;
+  st.appendChild(el);
+  while (st.children.length > 4) st.removeChild(st.firstChild);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 450); }, it.rarity >= 3 ? 7000 : 4500);
+}
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
 
 /* ---------- creation ---------- */
@@ -1561,13 +1689,13 @@ function setupGameUI() {
   UI.rev++; UI.logRev++; UI.feedRev++;
   renderStatic();
 }
-const TABS = [["quests", "Quests"], ["map", "Map"], ["dungeons", "Dungeons"], ["bag", "Gear"], ["talents", "Build"], ["research", "Research"], ["crafting", "Crafting"], ["policies", "Autopilot"], ["codex", "Codex"]];
+const TABS = [["quests", "Quests"], ["map", "Map"], ["dungeons", "Dungeons"], ["bag", "Gear"], ["talents", "Build"], ["research", "Research"], ["crafting", "Crafting"], ["feats", "Feats"], ["policies", "Autopilot"], ["codex", "Codex"]];
 
 let seenRev = 0, seenLog = 0, seenFeed = 0, seenTab = "";
 function renderStatic() {
   // things that change on structural events
   const d = derive(S), z = zoneOf(S), c = CLASSES[S.cls];
-  $("tClass").textContent = `${RACES[S.race].name} ${c.name}${S.ascensions ? ` · Ascension ${S.ascensions}` : ""}`;
+  $("tClass").innerHTML = `<span class="rank">${rankName(S)}</span> · ${RACES[S.race].name} ${c.name}${S.ascensions ? ` · Ascension ${S.ascensions}` : ""}`;
   $("tEssWrap").hidden = !S.essence;
   $("tEss").textContent = S.essence;
   const dg = S.run && DUNGEONS[S.run.d];
@@ -1576,12 +1704,17 @@ function renderStatic() {
   $("zRange").textContent = dg ? `Level ${dLevel(dg)}` : `Levels ${z.min}–${z.max}`;
   $("hStats").innerHTML = [
     ["Damage", fmt(d.atk)], ["Attack speed", d.aspd.toFixed(2) + "/s"], ["Critical", pct(d.crit)],
-    ["Armor", fmt(d.def) + ` (${pct(dr(d.def, S.level))})`], ["Max health", fmt(d.hp)], ["Power", fmt(power(S) / 10)],
+    ["Armor", fmt(d.def) + ` (${pct(dr(d.def, S.level))})`], ["Max health", fmt(d.hp)], ["Power", `<span id="powerNum">${fmt(power(S) / 10)}</span>`],
   ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  const pw = Math.floor(power(S) / 10);
+  if (UI.lastPower && pw > UI.lastPower) { const el = $("powerNum"); el.classList.add("pulse"); el.title = `+${pw - UI.lastPower}`; }
+  UI.lastPower = pw;
   $("hGear").innerHTML = SLOTS.map(k => {
     const it = S.gear[k];
-    return `<div class="slot"><span class="label">${SLOT_LABEL[k]}</span>${icon(slotIcon(k, S.race), it ? RCOL[it.rarity] : "#4c5a6b", 18)}<span class="nm ${it ? "r" + it.rarity : ""}">${it ? esc(it.name) : "—"}<span class="sub">${it ? itemLine(it) : "Empty"}</span></span></div>`;
+    const fl = UI.flashSlot === k ? " flash" : "";
+    return `<div class="slot${fl}"><span class="label">${SLOT_LABEL[k]}</span>${icon(slotIcon(k, S.race), it ? RCOL[it.rarity] : "#4c5a6b", 18)}<span class="nm ${it ? "r" + it.rarity : ""}">${it ? esc(it.name) : "—"}<span class="sub">${it ? itemLine(it) : "Empty"}</span></span></div>`;
   }).join("");
+  UI.flashSlot = null;
   $("apSwitch").setAttribute("aria-checked", S.pol.autopilot);
   $("apState").textContent = S.pol.autopilot ? "On" : "Manual";
   renderTabs();
@@ -1689,6 +1822,12 @@ function renderPane() {
     }
   }
   if (UI.tab === "policies") h += policiesPane();
+  if (UI.tab === "feats") {
+    const done = FEATS.filter(f => S.feats[f.id]).length;
+    h += `<div class="row"><span class="note">${done} of ${FEATS.length} feats. Each pays Valor; some bring a supply crate.</span><span class="num">Best streak ${S.bestStreak || 0}</span></div>`;
+    const sorted = [...FEATS].sort((a, b) => (S.feats[b.id] ? 1 : 0) - (S.feats[a.id] ? 1 : 0));
+    for (const f of sorted) h += `<div class="feat ${S.feats[f.id] ? "done" : "todo"}"><span class="mark">${S.feats[f.id] ? "✓" : ""}</span><span><b>${f.name}</b><span class="sub">${f.desc}</span></span><span class="num">+${f.valor}${f.crate ? " · crate" : ""}</span></div>`;
+  }
   if (UI.tab === "codex") {
     h += `<div class="card"><h3>${RACES[S.race].name}</h3><p>${RACES[S.race].blurb} ${RACES[S.race].passive}</p></div>`;
     ZONES.forEach((zz, i) => {
@@ -1743,6 +1882,9 @@ function renderLive() {
   $("tLevel").textContent = S.level;
   $("tXp").textContent = S.level >= MAX_LEVEL ? "Max level" : `${fmt(S.xp)} / ${fmt(need)}`;
   $("tXpBar").style.width = (S.level >= MAX_LEVEL ? 100 : S.xp / need * 100) + "%";
+  $("tXpWrap").classList.toggle("hot", S.level < MAX_LEVEL && S.xp / need > 0.85);
+  const stEl = $("streak"); stEl.hidden = (S.streak || 0) < 3;
+  if (!stEl.hidden) stEl.innerHTML = `Streak <span class="num">×${S.streak}</span> · +${Math.min(S.streak, STREAK_MAX)}%`;
   $("tMin").textContent = fmt(S.minerals);
   $("tGas").textContent = fmt(S.gas);
   const hpw = clamp(S.hp / d.hp * 100, 0, 100), shw = clamp((S.shield + S.pshield) / d.hp * 100, 0, 100 - hpw);
@@ -1752,12 +1894,12 @@ function renderLive() {
   $("hEnBar").style.width = S.en + "%";
   const mode = { fight: "In combat", seek: "Searching", rest: "Resting", idle: "Standing by", dead: "Down", mine: "Mining" }[S.mode];
   $("hState").textContent = mode;
-  $("aHeroMeta").textContent = `Lv ${S.level} ${CLASSES[S.cls].name}${S.stim > 0 ? " · Stimmed" : ""}${S.buffs.length ? " · " + S.buffs.map(b => CLASSES[S.cls].abilities.find(a => a.id === b.id)?.name).join(", ") : ""}`;
+  $("aHeroMeta").textContent = `Lv ${S.level} ${CLASSES[S.cls].name}${S.stim > 0 ? " · Stimmed" : ""}${S.buffs.length ? " · " + S.buffs.map(b => b.id === "surge" ? "Surge" : CLASSES[S.cls].abilities.find(a => a.id === b.id)?.name).filter(Boolean).join(", ") : ""}`;
   const fe = $("aFoe");
-  fe.classList.toggle("boss", !!(f && f.boss));
+  fe.classList.toggle("boss", !!(f && (f.boss || f.elite)));
   if (f) {
     $("aFoeName").textContent = f.name;
-    $("aFoeMeta").textContent = `Lv ${f.L}${f.boss ? " · " + f.title : ""} · ${fmt(Math.max(0, f.hp))} / ${fmt(f.max)}${f.stun > 0 ? " · Stunned" : ""}${f.dots.length ? " · Burning" : ""}`;
+    $("aFoeMeta").textContent = `Lv ${f.L}${f.boss || f.elite ? " · " + f.title : ""} · ${fmt(Math.max(0, f.hp))} / ${fmt(f.max)}${f.stun > 0 ? " · Stunned" : ""}${f.dots.length ? " · Burning" : ""}`;
     $("aFoeHp").style.width = clamp(f.hp / f.max * 100, 0, 100) + "%";
   } else {
     $("aFoeName").textContent = "No contact";
@@ -1812,7 +1954,7 @@ document.addEventListener("keydown", e => {
 });
 $("engageBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "rest" || S.mode === "mine") { S.mode = "seek"; S.timer = 0.5; delete S.mineFor; } });
 $("mineBtn").addEventListener("click", () => { if (startMining(S, S.pol.autopilot ? 60 : undefined)) log(S, "k", "Heading to the mineral field."); });
-$("restBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "seek") { S.mode = "rest"; log(S, "k", "You sit down to rest."); } });
+$("restBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "seek") { S.mode = "rest"; endStreak(S, "rested"); log(S, "k", "You sit down to rest."); } });
 $("leaveBtn").addEventListener("click", () => leaveRun(S));
 $("soundBtn").addEventListener("click", () => setSound(!SND.on));
 document.addEventListener("click", e => { if (e.target.closest("button") && SND.on) sfx("click"); }, true);
@@ -1828,7 +1970,7 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab
 $("pane").addEventListener("click", e => {
   const t = e.target.closest("button"); if (!t) return;
   if (t.dataset.travel) { if (S.run) toast("Leave the instance before travelling."); else if (S.mode !== "fight") travel(S, +t.dataset.travel); else toast("Finish the fight before travelling."); }
-  if (t.dataset.equip) { const it = S.bag.find(x => x.id === t.dataset.equip); if (it) { const old = S.gear[it.slot]; S.gear[it.slot] = it; S.bag.splice(S.bag.indexOf(it), 1); if (old) S.bag.push(old); log(S, "k", `Equipped ${it.name}.`); bump(); } }
+  if (t.dataset.equip) { const it = S.bag.find(x => x.id === t.dataset.equip); if (it) { const old = S.gear[it.slot]; S.gear[it.slot] = it; S.bag.splice(S.bag.indexOf(it), 1); if (old) S.bag.push(old); UI.flashSlot = it.slot; log(S, "k", `Equipped ${it.name}.`); bump(); } }
   if (t.dataset.sell) { const it = S.bag.find(x => x.id === t.dataset.sell); if (it) { const r = sellItem(S, it); S.bag.splice(S.bag.indexOf(it), 1); toast(`+${fmt(r.min)} minerals, +${r.scrap} ${PROF_NAMES[S.race].scrap}`); bump(); } }
   if (t.dataset.upg) buyUpgrade(S, t.dataset.upg, false);
   if (t.dataset.slot) {
@@ -1905,6 +2047,8 @@ function showAway(r) {
       <div><span class="label">Bosses</span><span class="num">${r.bosses}</span></div>
       <div><span class="label">Instances</span><span class="num">${r.runs}</span></div>
       <div><span class="label">Valor</span><span class="num">+${r.marks}</span></div>
+      <div><span class="label">Feats</span><span class="num">+${r.feats}</span></div>
+      <div><span class="label">Best streak</span><span class="num">${r.streak}</span></div>
     </div>
     ${r.zone ? `<p class="note">Now fighting in ${r.zone}.</p>` : ""}${r.deaths ? `<p class="note">Fell ${r.deaths} time${r.deaths > 1 ? "s" : ""} along the way.</p>` : ""}
     <div class="btns"><button class="btn primary" data-close>Continue</button></div>`);
@@ -2218,7 +2362,7 @@ function drawBackdrop(c, W, H, art, dungeon) {
 }
 
 /* ---------- scene renderer ---------- */
-const R = { parts: [], texts: [], shots: [], hero: { lunge: 0, flash: 0 }, foe: { lunge: 0, flash: 0, x: 0 }, foeRef: null, ghost: null, compT: [], bgKey: "", bg: null, t: 0, last: 0, shake: 0, auras: [] };
+const R = { bannerQ: [], banner: null, flash: 0, parts: [], texts: [], shots: [], hero: { lunge: 0, flash: 0 }, foe: { lunge: 0, flash: 0, x: 0 }, foeRef: null, ghost: null, compT: [], bgKey: "", bg: null, t: 0, last: 0, shake: 0, auras: [] };
 function sceneSize() {
   const cv = $("scene"); if (!cv) return null;
   const W = cv.clientWidth, H = cv.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -2267,7 +2411,8 @@ function processFx(L) {
       if (e.boss) R.shake = 1.2;
       sfx(e.boss ? "boom" : "splat");
     } else if (e.type === "spawn") { R.foe.x = 160 * L.k; R.foe.flash = 0; }
-    else if (e.type === "level") { burst(heroX, heroY + 30 * L.k, "#c9b04e", 40, 2, 5); addText(heroX, heroY - 70 * L.k, "Level " + S.level, "#ffd84a", true); sfx("level"); }
+    else if (e.type === "banner") { R.bannerQ.push({ lines: e.lines, col: e.col, small: !!e.small, snd: e.snd, wait: e.delay || 0 }); }
+    else if (e.type === "level") { burst(heroX, heroY + 30 * L.k, "#c9b04e", 60, 3, 6); R.flash = 1; R.shake = Math.max(R.shake, .5); R.auras.push({ who: "hero", col: "#ffd84a", life: 1, ring: true }); sfx("level"); }
     else if (e.type === "loot") { if (e.rarity >= 2) { addText(foeX, foeY - 70 * L.k, RARITY[e.rarity].name + " loot", ["#9aa5b1", "#5fcf6a", "#4c9bff", "#b484ff", "#ff9a3c"][e.rarity], true); sfx(e.rarity >= 3 ? "epic" : "loot"); } }
     else if (e.type === "shard") { burst(heroX + 40 * L.k, heroY + 30 * L.k, "#7fd8ff", 6, 2, 3); sfx("loot"); }
     else if (e.type === "die") { burst(heroX, heroY + 20 * L.k, "#888888", 20, 3); sfx("die"); }
@@ -2335,6 +2480,7 @@ function renderScene(now) {
     if (S.mode === "rest" && !REDUCED && Math.random() < .05) addText(L.hero.x + 20 * L.k, L.hero.y - 80 * L.k, "z", "#9ad9ff", false);
     if (S.shield + S.pshield > 1) { c.beginPath(); c.ellipse(L.hero.x, L.hero.y - 42 * L.k, 34 * L.k, 50 * L.k, 0, 0, Math.PI * 2); c.strokeStyle = "rgba(154,217,255,.45)"; c.lineWidth = 2; c.stroke(); c.fillStyle = "rgba(154,217,255,.07)"; c.fill(); }
     for (const b of S.buffs) { c.beginPath(); c.ellipse(L.hero.x, L.hero.y, 30 * L.k, 7 * L.k, 0, 0, Math.PI * 2); c.strokeStyle = hpal.glow + "aa"; c.lineWidth = 2; c.stroke(); break; }
+    if (S.buffs.some(b => b.id === "surge") && !REDUCED && Math.random() < .5) R.parts.push({ x: L.hero.x + (Math.random() - .5) * 40 * L.k, y: L.hero.y - Math.random() * 10, vx: (Math.random() - .5) * .4, vy: -1.5 - Math.random(), life: 1, decay: 1.2, col: "#ffd84a", size: 2 });
   }
   // foe (and fading ghost of the last one)
   if (R.ghost) { R.ghost.life -= dt * 1.6; if (R.ghost.life <= 0) R.ghost = null; else drawUnit(c, R.ghost.kind, R.ghost.pal, L.foe.x + R.ghost.x, L.foe.y + (1 - R.ghost.life) * 10 * L.k, R.ghost.scale, -1, 0, 0, R.ghost.life * .8); }
@@ -2342,6 +2488,7 @@ function renderScene(now) {
     const look = foeLook(S.foe.name), scale = L.k * (S.foe.boss ? 1.45 : 1);
     R.foeRef = { kind: look.kind, pal: look.pal, scale };
     if (S.foe.boss && !REDUCED) { const bg = c.createRadialGradient(L.foe.x, L.foe.y - 50 * L.k, 4, L.foe.x, L.foe.y - 50 * L.k, 90 * L.k); bg.addColorStop(0, look.pal.glow + "33"); bg.addColorStop(1, "rgba(0,0,0,0)"); c.fillStyle = bg; c.fillRect(0, 0, W, H); }
+    if (S.foe.elite) { glowOn(c, "#ffd84a", 12); const ex = L.foe.x + R.foe.x, ey = L.foe.y - 96 * L.k + Math.sin(t * 3) * 3; poly(c, [ex - 7, ey - 10, ex, ey - 2, ex + 7, ey - 10, ex + 5, ey + 2, ex - 5, ey + 2], "#ffd84a"); glowOff(c); }
     drawUnit(c, look.kind, look.pal, L.foe.x + R.foe.x - R.foe.lunge * 10 * L.k, L.foe.y, scale, -1, t + 2, R.foe.flash, 1);
     if (S.foe.dots.length && !REDUCED && Math.random() < .6) burst(L.foe.x + (Math.random() - .5) * 40 * L.k, L.foe.y - Math.random() * 60 * L.k, S.race === "protoss" ? "#7fd8ff" : S.race === "zerg" ? "#a6e04a" : "#ff8a2a", 1, 1, 1.5);
     if (S.foe.stun > 0) for (let i = 0; i < 3; i++) { const a = t * 4 + i * 2.1; ell(c, L.foe.x + Math.cos(a) * 16 * L.k, L.foe.y - 92 * L.k * (S.foe.boss ? 1.4 : 1) + Math.sin(a) * 4, 2.5, 2.5, "#ffd84a"); }
@@ -2360,6 +2507,24 @@ function renderScene(now) {
   // particles
   for (const p of R.parts) { p.x += p.vx; p.y += p.vy; p.vy += .08; p.life -= dt * p.decay; c.globalAlpha = Math.max(0, p.life); c.fillStyle = p.col; c.fillRect(p.x, p.y, p.size, p.size); }
   c.globalAlpha = 1; R.parts = R.parts.filter(p => p.life > 0 && p.y < H + 10);
+  // banners (level-ups, promotions, feats, bounties), one at a time
+  if (!R.banner && R.bannerQ.length) { const nb = R.bannerQ[0]; nb.wait -= dt; if (nb.wait <= 0) { R.bannerQ.shift(); R.banner = { ...nb, life: nb.small ? 2.6 : 3.4, t: 0 }; if (nb.snd) sfx(nb.snd); } }
+  if (R.banner) {
+    const bn = R.banner; bn.t += dt; bn.life -= dt;
+    const a = Math.min(1, bn.t * 4, Math.max(0, bn.life) * 2);
+    const y = bn.small ? H * .22 : H * .36, hgt = bn.small ? 44 : 64;
+    c.globalAlpha = a * .85; const g = c.createLinearGradient(0, 0, W, 0); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(.2, "rgba(6,8,12,.9)"); g.addColorStop(.8, "rgba(6,8,12,.9)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = g; c.fillRect(0, y - hgt / 2, W, hgt);
+    c.fillStyle = bn.col; c.fillRect(W * .2, y - hgt / 2, W * .6, 1); c.fillRect(W * .2, y + hgt / 2 - 1, W * .6, 1);
+    c.globalAlpha = a; c.textAlign = "center";
+    const slide = REDUCED ? 0 : Math.max(0, 1 - bn.t * 3) * 30;
+    c.font = `700 ${bn.small ? 16 : 26}px "Chakra Petch", system-ui, sans-serif`;
+    glowOn(c, bn.col, 14); c.fillStyle = bn.col; c.fillText(bn.lines[0], W / 2 - slide, y - (bn.lines[1] ? 6 : -8)); glowOff(c);
+    if (bn.lines[1]) { c.font = `500 ${bn.small ? 11 : 13}px "Barlow", system-ui, sans-serif`; c.fillStyle = "#d8e1ea"; c.fillText(bn.lines[1], W / 2 + slide, y + (bn.small ? 14 : 18)); }
+    c.globalAlpha = 1;
+    if (bn.life <= 0) R.banner = null;
+  }
+  if (R.flash > 0) { c.fillStyle = `rgba(255,232,160,${R.flash * (REDUCED ? .25 : .55)})`; c.fillRect(0, 0, W, H); R.flash = Math.max(0, R.flash - dt * 2.2); }
   // floating numbers
   c.textAlign = "center";
   for (const tx of R.texts) {
@@ -2440,12 +2605,16 @@ const SFX = {
   heal: () => [660, 880, 1100].forEach((f, i) => tone({ f, dur: .18, vol: .08, delay: i * .07 })),
   shield: () => { tone({ type: "triangle", f: 300, f2: 700, dur: .3, vol: .1 }); tone({ f: 600, f2: 1200, dur: .3, vol: .05 }); },
   buff: () => tone({ type: "square", f: 440, f2: 880, dur: .16, vol: .05 }),
-  level: () => [523, 659, 784, 1047].forEach((f, i) => tone({ type: "triangle", f, dur: .25, vol: .12, delay: i * .09 })),
+  level: () => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone({ type: "triangle", f, dur: .3, vol: .13, delay: i * .08 })); hiss({ filter: "highpass", freq: 2000, dur: .5, vol: .12, delay: .3 }); tone({ f: 1568, dur: .6, vol: .08, delay: .45 }); },
   loot: () => { tone({ f: 1320, dur: .12, vol: .07 }); tone({ f: 1760, dur: .16, vol: .07, delay: .08 }); },
   epic: () => [880, 1320, 1760, 2200].forEach((f, i) => tone({ f, dur: .22, vol: .07, delay: i * .07 })),
   quest: () => [392, 523, 659].forEach((f, i) => tone({ type: "triangle", f, dur: .22, vol: .1, delay: i * .1 })),
   die: () => tone({ type: "sawtooth", f: 220, f2: 45, dur: .9, vol: .1 }),
   click: () => tone({ type: "square", f: 900, dur: .03, vol: .04 }),
+  promote: () => [392, 494, 587, 784, 988].forEach((f, i) => tone({ type: "triangle", f, dur: .3, vol: .12, delay: i * .1 })),
+  feat: () => { tone({ f: 988, dur: .15, vol: .08 }); tone({ f: 1319, dur: .3, vol: .08, delay: .12 }); },
+  streak: () => [660, 880].forEach((f, i) => tone({ type: "square", f, dur: .1, vol: .05, delay: i * .08 })),
+  bounty: () => { tone({ type: "sawtooth", f: 220, f2: 330, dur: .4, vol: .08 }); tone({ type: "sawtooth", f: 330, dur: .4, vol: .06, delay: .3 }); hiss({ filter: "lowpass", freq: 500, dur: .4, vol: .15 }); },
 };
 const SFX_GAP = { gauss: .18, claw: .15, spine: .12, hurt: .15, blade: .12 };
 function sfx(name) {

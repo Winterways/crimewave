@@ -61,7 +61,7 @@ with the current policies, then shows a "While you were away" summary.
 ## Balance
 Foes are tuned against a reference hero of the same level, so an even fight is ~7s and costs ~25%
 health before abilities. Headless sims of all 9 classes on full autopilot reach Amon in roughly
-5–9 hours of play time, with tankier/faster classes at the quick end. Dungeons usually open up around
+4–7 hours of play time (see Feel below), with tankier/faster classes at the quick end. Dungeons usually open up around
 hour 1–2, once a tank or healer companion has joined.
 
 ## Professions
@@ -93,6 +93,25 @@ level-up fireworks and screen shake on big hits. Inline SVG icons mark gear slot
 Sound effects are synthesized with Web Audio (noise bursts and oscillators): weapon fire per class, hits, kills,
 abilities, heals, loot, level-ups and quest turn-ins. Sound starts after the first click and can be toggled at the
 top; the choice is remembered. Offline catch-up and the autopilot's rehearsals never trigger effects.
+
+## Feel: the reward loop
+Austin asked for leveling to feel powerful and for the game to keep pulling you back. What that pass added:
+- **Level-up**: a full-screen flash and banner on the scene with the actual stat deltas (+damage, +health, +1 talent
+  point), energy refilled, and a 20 s **Surge** (+30% damage and attack speed, gold particles) so the next fights are
+  visibly easier, not just a number ticking over. The XP bar glows past 85%.
+- **Ranks**: a title every 5 levels per race (Recruit → General, Initiate → Hierarch, Larva → Swarm Prime) shown under the
+  hero's name; a promotion banner and a free rare+ supply crate.
+- **Kill streaks**: +1% xp and minerals per kill in a row (cap +30%), shown next to the mode line from 3 kills. Resting,
+  dying, travelling or mining ends it; milestones at 10/20/30 get a banner.
+- **Bounty targets**: every 8–15 minutes of play an elite version of a zone enemy appears (2.2× hp, 1.25× damage, marked
+  with a gold chevron): triple xp and minerals, bonus gas and a guaranteed rare+ drop.
+- **Feats**: 26 milestones (kills, levels, bosses, instances, streaks, bounties, crafting, mining, bonds, ascension) with
+  Valor rewards and supply crates for the big ones; a Feats tab and unlock banners. Feats carry through ascension.
+- **Loot cards**: rare+ drops and any upgrade slide in at the bottom-left with the item line and "+x% power, equipping";
+  the gear slot flashes when something new goes in and the Power stat pulses when it rises.
+- New synthesized sounds for promotion, feats, streak milestones and bounty sightings; the level-up fanfare is longer.
+- Balance: the streak and bounty bonuses speed a full-autopilot run up by roughly 15–20% (Amon now falls in ~4–7 h
+  across the nine classes instead of 5–9 h), which felt like the right trade for the pacing.
 
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
