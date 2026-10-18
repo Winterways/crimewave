@@ -963,6 +963,10 @@ const EVENTS = [
   { id: "vein", name: "Rich Vein", dur: 150, col: "#9ad9ff", desc: "Mining yields triple" },
   { id: "patrol", name: "Elite Patrol", dur: 120, col: "#ffd84a", desc: "Bounty targets roam: one spawn in three" },
   { id: "resonance", name: "Khaydarin Resonance", dur: 180, col: "#4cc9ff", desc: "Abilities cost half and recharge 30% faster" },
+  { id: "relic", name: "Xel'Naga Relic", dur: 150, col: "#ffb347", desc: "+15% critical chance" },
+  { id: "conduit", name: "Warp Conduit", dur: 180, col: "#7fd8ff", desc: "Energy regenerates twice as fast" },
+  { id: "field", name: "Salvage Field", dur: 150, col: "#c9c9c9", desc: "Enemies drop loot twice as often" },
+  { id: "incursion", name: "Hybrid Incursion", dur: 120, col: "#ff6b9d", min: 14, desc: "Enemies are 40% tougher and every one drops loot" },
 ];
 const evOn = (s, id) => s.event && s.event.id === id ? 1 : 0;
 const abCost = (s, a) => evOn(s, "resonance") ? a.cost / 2 : a.cost;
@@ -1148,6 +1152,7 @@ function power(s, o) {
 function buffAgg(s) {
   const b = { aspd: 0, atk: 0, crit: 0, def: 0, dodge: 0 };
   for (const x of s.buffs) for (const k in x.buff) b[k] += x.buff[k];
+  if (evOn(s, "relic")) b.crit += 0.15;
   return b;
 }
 
@@ -1183,6 +1188,7 @@ function spawnFoe(s, boss) {
   const e = boss ? z.boss : z.foes[idx];
   const f = foeStats(L, e, boss, s);
   const foe = { name: e.name, kind: e.name, title: boss ? z.boss.title : "", idx, L, hp: f.hp, max: f.hp, atk: f.atk, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss: !!boss };
+  if (!boss && evOn(s, "incursion")) { foe.hybrid = true; foe.title = "Hybrid-touched"; foe.hp *= 1.4; foe.max = foe.hp; foe.atk *= 1.4; }
   // every so often an elite bounty target shows up: tougher, triple rewards, guaranteed rare loot
   if (!boss && s.level >= 3 && (s.stats.played >= (s.nextBounty || 0) || (evOn(s, "patrol") && rnd() < 1 / 3))) {
     s.nextBounty = s.stats.played + (480 + rnd() * 420) / (1 + 0.25 * perk(s, "mark"));
@@ -1218,7 +1224,7 @@ function step(s, dt) {
   if (s.stim > 0) { s.stim -= dt; if (s.stim <= 0) { s.stim = 0; log(s, "k", `${PROF_NAMES[s.race].stim} wore off.`); bump(); } }
   if (s.rested > 0) { s.rested -= dt; if (s.rested <= 0) { s.rested = 0; log(s, "k", "Rested wore off."); bump(); } }
   s.hp = Math.min(s.hp, d.hp);
-  s.en = Math.min(100, s.en + d.regen * dt);
+  s.en = Math.min(100, s.en + d.regen * dt * (evOn(s, "conduit") ? 2 : 1));
   for (const k in s.cds) { s.cds[k] -= dt; if (s.cds[k] <= 0) delete s.cds[k]; }
   for (const b of s.buffs) b.t -= dt;
   s.buffs = s.buffs.filter(b => b.t > 0);
@@ -1402,10 +1408,10 @@ function killFoe(s, d) {
   if (!f.run && !f.boss) { contractEvent(s, "kills", 1); contractEvent(s, "foe", 1, f.idx); }
   gainXp(s, xp);
   // loot
-  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) || s.stats.kills === 2 || s.stats.kills === 6 ? 1 : 0; // the second and sixth kills always drop something, so new players see loot in the first minute
+  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || f.hybrid || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) * (evOn(s, "field") ? 2 : 1) || s.stats.kills === 2 || s.stats.kills === 6 ? 1 : 0; // the second and sixth kills always drop something, so new players see loot in the first minute
   for (let i = 0; i < drops; i++) {
-    const floor = f.raid && f.boss ? 3 : f.boss || f.elite ? 2 : 0;
-    const rarity = Math.max(floor, rollRarity(f.raid ? 4 : f.boss || f.run ? 2 : 0));
+    const floor = f.raid && f.boss ? 3 : f.boss || f.elite ? 2 : f.hybrid ? 1 : 0;
+    const rarity = Math.max(floor, rollRarity(f.raid ? 4 : f.boss || f.run || f.hybrid ? 2 : 0));
     gainItem(s, makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, f.L), rarity));
   }
   checkFeats(s);
@@ -1913,7 +1919,7 @@ function eventTick(s, dt) {
     return;
   }
   if (s.stats.played >= (s.nextEvent || 0) && s.level >= 4 && s.mode !== "dead" && !s.run) {
-    const pool = EVENTS.filter(e => e.id !== "vein" || s.pol.mine || !s.pol.autopilot);
+    const pool = EVENTS.filter(e => (e.id !== "vein" || s.pol.mine || !s.pol.autopilot) && s.level >= (e.min || 0));
     const e = pick(pool);
     s.event = { id: e.id, t: e.dur }; s.nextEvent = s.stats.played + e.dur + EVENT_GAP();
     s.stats.events = (s.stats.events || 0) + 1;
@@ -2590,7 +2596,7 @@ function renderLive() {
   fe.classList.toggle("boss", !!(f && (f.boss || f.elite)));
   if (f) {
     $("aFoeName").textContent = f.name;
-    $("aFoeMeta").textContent = `Lv ${f.L}${f.boss || f.elite ? " · " + f.title : ""} · ${fmt(Math.max(0, f.hp))} / ${fmt(f.max)}${f.stun > 0 ? " · Stunned" : ""}${f.dots.length ? " · Burning" : ""}`;
+    $("aFoeMeta").textContent = `Lv ${f.L}${f.boss || f.elite || f.hybrid ? " · " + f.title : ""} · ${fmt(Math.max(0, f.hp))} / ${fmt(f.max)}${f.stun > 0 ? " · Stunned" : ""}${f.dots.length ? " · Burning" : ""}`;
     $("aFoeHp").style.width = clamp(f.hp / f.max * 100, 0, 100) + "%";
   } else {
     $("aFoeName").textContent = "No contact";
