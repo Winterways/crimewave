@@ -18,8 +18,10 @@ codes in the Codex). Up to three heroes per browser; click the hero's name at th
   the Map tab hold it in a zone or add mining there.
 - Dungeons and raids with seven companions from the lore, each with a signature ability, and a forecast of your odds
   before you enter.
-- Professions (mining, salvaging, crafting, stims), rotating contracts, world events, bounty elites, kill streaks,
-  ranks, feats, ascension perks and a daily check-in with a streak.
+- Every boss, in the field or in an instance, has a telegraphed signature move that a shield or dodge can answer.
+- Professions (mining, salvaging, crafting, kits, stims, reforging), item affixes, rotating contracts, ten world
+  events, bounty elites, kill streaks, ranks, feats, a daily check-in with a streak, and ascension into harder cycles
+  with permanent perks.
 - Up to three heroes per browser, offline catch-up of up to eight hours, a Codex with a bestiary and your record, a
   first-hour tip strip, synthesized sound effects and a per-zone ambience bed, all drawn and synthesized in code.
 

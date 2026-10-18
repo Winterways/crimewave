@@ -741,8 +741,17 @@ const BOSS_MOVES = {
   "Arcturus Mengsk": { name: "Nuclear Strike", every: 20, kind: "slam", mult: 5 },
   "Maar": { name: "Shadow Rift", every: 14, kind: "enrage", atk: 0.35, dur: 8 },
   "Amon": { name: "Void Collapse", every: 16, kind: "slam", mult: 4 },
+  // instance bosses: a heavy telegraphed hit each, a little harder in raids
+  "The Brutalisk": { name: "Crushing Charge", every: 18, kind: "slam", mult: 2 },
+  "The Odin": { name: "Barrage", every: 18, kind: "slam", mult: 2 },
+  "Daggoth": { name: "Spawn Guardians", every: 18, kind: "heal", amt: 0.06 },
+  "Kerrigan's Shadow": { name: "Psionic Shift", every: 18, kind: "drain", mult: 1.8, energy: 25 },
+  "Samir Duran": { name: "Hybrid Surge", every: 16, kind: "enrage", atk: 0.3, dur: 7 },
+  "Gabriel Tosh": { name: "Mind Blast", every: 18, kind: "slam", mult: 2.5 },
+  "Dr. Emil Narud": { name: "Shapeshift", every: 18, kind: "heal", amt: 0.07 },
+  "Avatar of Amon": { name: "Void Rift", every: 18, kind: "slam", mult: 3 },
 };
-const bossMove = f => f && f.boss && !f.run ? BOSS_MOVES[f.name] : null;
+const bossMove = f => f && f.boss ? BOSS_MOVES[f.name] : null;
 
 // Abilities 4-6 per class unlock at levels 10 / 20 / 30. Three can be slotted at once.
 const EXTRA_ABILITIES = {
@@ -1329,6 +1338,7 @@ function fight(s, d, dt) {
       f.moveT = mv.every; f.tele = false;
       if (mv.kind === "heal") { const amt = Math.min(f.max - f.hp, f.max * mv.amt); f.hp += amt; log(s, "r1", `${f.name} regenerates ${fmt(amt)} health.`); fx(s, "foeheal", { amt }); }
       else if (mv.kind === "enrage") { f.enrage = mv.dur; log(s, "r1", `${f.name} opens a ${mv.name}: +${Math.round(mv.atk * 100)}% damage for ${mv.dur}s.`); fx(s, "foeheal", { amt: 0 }); }
+      else if (s.run && (() => { const tk = s.run.party.find(m => m.hp > 0 && ((m.taunt || 0) > 0 || compStats(s, m.id).role === "tank")); if (!tk) return false; hitCompanion(s, tk, { atk: f.atk * mv.mult, L: f.L }); log(s, "h", `${COMPANIONS.find(c => c.id === tk.id).name} takes ${mv.name}.`); fx(s, "hurt", { to: s.run.party.indexOf(tk), dmg: 0, big: true }); return true; })()) { /* a tank or a taunting companion takes the hit */ }
       else if (rnd() < b.dodge) { log(s, "a", `You evade ${f.name}'s ${mv.name}.`); fx(s, "dodge"); }
       else {
         let dmg = f.atk * mv.mult * (1 - dr(d.def * (1 + b.def), f.L));
