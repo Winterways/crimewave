@@ -254,8 +254,10 @@ and shown as a timer pill beside the mode line: Brood Surge (enemies come four t
 90 s if its mining policy is on), Elite Patrol (one spawn in three is a bounty target) and Khaydarin Resonance (abilities
 cost half and recharge 30% faster; the autopilot's ability picker knows), and from the content pass four more: Xel'Naga
 Relic (+15% critical chance), Warp Conduit (energy regenerates twice as fast), Salvage Field (drops twice as often) and,
-from level 14, Hybrid Incursion (every enemy is Hybrid-touched: 40% tougher, and every one drops uncommon-or-better
-loot; a two-minute risk-and-reward burst, measured at 14 kills and 24 items against a normal 16 and 12). Events also run
+from level 18, Hybrid Incursion (every enemy is Hybrid-touched: 30% tougher, and every one drops uncommon-or-better
+loot; a two-minute risk-and-reward burst, measured at 14 kills and 24 items against a normal 16 and 12). Forced
+incursions on Ghost, Templar, Firebat and Zergling: at level 14 with 40% tougher foes the hero fled more than once an
+enemy and died in 1 of 12 trials, which is why the event starts at 18 and the bonus is 30%; at level 20 no deaths. Events also run
 during offline catch-up and are counted in the away summary. Feat: Storm Chaser (10 events).
 - Elite Patrol brings six or seven bounties in two minutes, so those bounties use the small banner instead of the
   full one (a cadence audit of a five-hour run showed the burst of full banners; the audit found no other dead

@@ -973,7 +973,7 @@ const EVENTS = [
   { id: "relic", name: "Xel'Naga Relic", dur: 150, col: "#ffb347", desc: "+15% critical chance" },
   { id: "conduit", name: "Warp Conduit", dur: 180, col: "#7fd8ff", desc: "Energy regenerates twice as fast" },
   { id: "field", name: "Salvage Field", dur: 150, col: "#c9c9c9", desc: "Enemies drop loot twice as often" },
-  { id: "incursion", name: "Hybrid Incursion", dur: 120, col: "#ff6b9d", min: 14, desc: "Enemies are 40% tougher and every one drops loot" },
+  { id: "incursion", name: "Hybrid Incursion", dur: 120, col: "#ff6b9d", min: 18, desc: "Enemies are 30% tougher and every one drops loot" },
 ];
 const evOn = (s, id) => s.event && s.event.id === id ? 1 : 0;
 const abCost = (s, a) => evOn(s, "resonance") ? a.cost / 2 : a.cost;
@@ -1195,7 +1195,7 @@ function spawnFoe(s, boss) {
   const e = boss ? z.boss : z.foes[idx];
   const f = foeStats(L, e, boss, s);
   const foe = { name: e.name, kind: e.name, title: boss ? z.boss.title : "", idx, L, hp: f.hp, max: f.hp, atk: f.atk, def: f.def, aspd: f.aspd, atkT: 0.3, stun: 0, dots: [], boss: !!boss };
-  if (!boss && evOn(s, "incursion")) { foe.hybrid = true; foe.title = "Hybrid-touched"; foe.hp *= 1.4; foe.max = foe.hp; foe.atk *= 1.4; }
+  if (!boss && evOn(s, "incursion")) { foe.hybrid = true; foe.title = "Hybrid-touched"; foe.hp *= 1.3; foe.max = foe.hp; foe.atk *= 1.3; }
   // every so often an elite bounty target shows up: tougher, triple rewards, guaranteed rare loot
   if (!boss && s.level >= 3 && (s.stats.played >= (s.nextBounty || 0) || (evOn(s, "patrol") && rnd() < 1 / 3))) {
     s.nextBounty = s.stats.played + (480 + rnd() * 420) / (1 + 0.25 * perk(s, "mark"));
