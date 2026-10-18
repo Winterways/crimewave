@@ -273,6 +273,12 @@ Cloak takes nothing ("Void Collapse hits you for 1438 (1438 absorbed)"), and the
 when a shield or dodge is ready. The boss-margin estimate folds the move in (its damage averaged over its timer), which
 is why the autopilot waits a little longer before a boss now; six-hour sims after the change still reach Amon in
 2.8–4.6 h with 0–1 deaths and 3–6 answered telegraphs per run. The Quests tab's boss card names the signature.
+Instance bosses have moves too (Crushing Charge, Barrage, Spawn Guardians, Psionic Shift, Hybrid Surge, Mind Blast,
+Shapeshift, Void Rift), a little softer (2–3x every 18 s) and taken by a tank or a taunting companion when the party has
+one, which is what tanks are for. The first draft (2.5x every 15 s, always on the hero) turned the Brutalisk into a wall
+at level 8: rehearsals failed 5 of 5 for several rounds and real wipes followed. Rehearsals run the same fight code, so
+the forecast and the autopilot's go/no-go include the moves; six-hour sims after the fix: Amon in 2.8–5.1 h, 0–1 deaths,
+the one death a Brutalisk wipe at level 10.
 
 ## Codex and bestiary
 The Codex lists every zone you have seen with its three enemies and your kill count for each; after five kills the entry
