@@ -315,6 +315,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vertical; }
 .float { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--plate-2); border: 1px solid var(--acc); padding: 10px 14px; font-size: 13px; z-index: 30; max-width: min(360px, calc(100vw - 32px)); }
 
+.card p.hz { color: var(--ink); } .card p.hz b { color: var(--acc); font-weight: 600; }
 kbd { font: 600 11px var(--f-mono); background: var(--plate); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; color: var(--ink); }
 .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 13px; }
 .keys span { display: flex; gap: 8px; align-items: center; }
@@ -591,6 +592,20 @@ const ZONES = [
 ];
 const MAX_LEVEL = 40;
 
+// Zone hazards: one passive rule per zone in the field (never inside an instance), each a cost and a perk so that
+// zones play differently without any being strictly worse. Mar Sara, the first zone, has none.
+const HAZARDS = {
+  tarsonis: { name: "Psi emitters", desc: "Enemies find you 40% sooner, but loot drops 20% less often.", seek: 0.6, drop: 0.8 },
+  char: { name: "Volcanic heat", desc: "Resting restores health 30% slower; enemies carry 25% more minerals and gas.", rest: 0.7, pay: 1.25 },
+  aiur: { name: "Khala resonance", desc: "Energy regenerates 40% faster; enemies attack 10% faster.", regen: 1.4, foeAspd: 1.1 },
+  shakuras: { name: "Twilight shroud", desc: "Your critical chance is 8 points higher; enemies have 12% more health.", crit: 0.08, foeHp: 1.12 },
+  korhal: { name: "Siege lines", desc: "Enemies hit 12% harder; every kill pays 20% more experience.", foeAtk: 1.12, xp: 1.2 },
+  ulnar: { name: "Void echoes", desc: "Shields absorb 30% more; energy regenerates 25% slower.", shield: 1.3, regen: 0.75 },
+  void: { name: "Amon's presence", desc: "Kill streak bonuses are doubled; enemies hit 8% harder.", streak: 2, foeAtk: 1.08 },
+};
+const hazard = s => s && !s.run ? HAZARDS[ZONES[s.zone].id] || null : null;
+const hz = (s, k, def = 1) => { const h = hazard(s); return h && h[k] != null ? h[k] : def; };
+
 // Field intel for the bestiary in the Codex, revealed after five kills of each kind.
 const FOE_LORE = {
   "Zergling": "The Swarm's cheapest strain: fast, expendable and never alone. Two hatch from every egg.",
@@ -767,7 +782,7 @@ const bossMove = f => f && f.boss ? BOSS_MOVES[f.name] : null;
 // One line per signature move for the Codex and the boss card.
 function moveDesc(mv) {
   const every = `every ${mv.every}s, telegraphed ${TELEGRAPH}s ahead`;
-  if (mv.kind === "heal") return `heals ${Math.round(mv.heal * 100)}% of its health ${every}`;
+  if (mv.kind === "heal") return `heals ${Math.round(mv.amt * 100)}% of its health ${every}`;
   if (mv.kind === "enrage") return `+${Math.round(mv.atk * 100)}% damage for ${mv.dur}s ${every}`;
   if (mv.kind === "drain") return `a ${mv.mult}x hit that also drains ${mv.energy} energy ${every}`;
   return `a ${mv.mult}x hit ${every}; a shield, dodge or tank companion answers it`;
@@ -1212,6 +1227,7 @@ function buffAgg(s) {
   const b = { aspd: 0, atk: 0, crit: 0, def: 0, dodge: 0 };
   for (const x of s.buffs) for (const k in x.buff) b[k] += x.buff[k];
   if (evOn(s, "relic")) b.crit += 0.15;
+  b.crit += hz(s, "crit", 0);
   return b;
 }
 
@@ -1232,12 +1248,12 @@ function refHero(L) {
 const CYCLE_SCALE = 1.0, CYCLE_PAY = 0.25;
 function cycleMult(s) { return 1 + CYCLE_SCALE * ((s && s.ascensions) || 0); }
 function foeStats(L, e, boss, s) {
-  const r = refHero(L), cyc = cycleMult(s);
+  const r = refHero(L), cyc = cycleMult(s), hzHp = boss ? 1 : hz(s, "foeHp"), hzAtk = boss ? 1 : hz(s, "foeAtk"), hzAspd = boss ? 1 : hz(s, "foeAspd");
   const green = boss ? 1 : Math.min(1, 0.72 + 0.04 * (L - 1)); // levels 1 to 7 are a power fantasy: softer foes, fewer rests, fewer deaths
   return {
-    hp: r.dps * 7.5 * (1 - dr(L * 1.2, L)) ** -1 * (e.hp || 1) * (boss ? 7 : 1) * green * cyc,
-    atk: r.hp * 0.05 / (1 - dr(r.def, L)) * (e.atk || 1) / (e.aspd || 1) * (boss ? 1.25 : 1) * green * cyc,
-    def: L * 1.2 * (boss ? 1.3 : 1), aspd: (e.aspd || 1) * (boss ? 0.9 : 1),
+    hp: r.dps * 7.5 * (1 - dr(L * 1.2, L)) ** -1 * (e.hp || 1) * (boss ? 7 : 1) * green * cyc * hzHp,
+    atk: r.hp * 0.05 / (1 - dr(r.def, L)) * (e.atk || 1) / (e.aspd || 1) * (boss ? 1.25 : 1) * green * cyc * hzAtk,
+    def: L * 1.2 * (boss ? 1.3 : 1), aspd: (e.aspd || 1) * (boss ? 0.9 : 1) * hzAspd,
   };
 }
 function spawnFoe(s, boss) {
@@ -1285,7 +1301,7 @@ function step(s, dt) {
   if (s.stim > 0) { s.stim -= dt; if (s.stim <= 0) { s.stim = 0; log(s, "k", `${PROF_NAMES[s.race].stim} wore off.`); bump(); } }
   if (s.rested > 0) { s.rested -= dt; if (s.rested <= 0) { s.rested = 0; log(s, "k", "Rested wore off."); bump(); } }
   s.hp = Math.min(s.hp, d.hp);
-  s.en = Math.min(100, s.en + d.regen * dt * (evOn(s, "conduit") ? 2 : 1));
+  s.en = Math.min(100, s.en + d.regen * dt * (evOn(s, "conduit") ? 2 : 1) * hz(s, "regen"));
   for (const k in s.cds) { s.cds[k] -= dt; if (s.cds[k] <= 0) delete s.cds[k]; }
   for (const b of s.buffs) b.t -= dt;
   s.buffs = s.buffs.filter(b => b.t > 0);
@@ -1300,7 +1316,7 @@ function step(s, dt) {
       if (s.timer <= 0) { s.hp = d.hp; s.en = 60; s.mode = auto(s, "engage") ? "seek" : "idle"; s.timer = 1.5; log(s, "k", "You are back on your feet."); }
       break;
     case "rest":
-      s.hp = Math.min(d.hp, s.hp + d.hp * 0.07 * dt);
+      s.hp = Math.min(d.hp, s.hp + d.hp * 0.07 * dt * hz(s, "rest"));
       s.en = Math.min(100, s.en + 8 * dt);
       if (s.run) for (const m of s.run.party) m.hp = Math.min(m.max, m.hp + m.max * 0.07 * dt);
       if (s.hp >= d.hp * (s.pol.autopilot ? Math.max(s.pol.restTo, s.restGoal || 0) / 100 : 1) - 0.01 && partyRested(s)) {
@@ -1316,7 +1332,7 @@ function step(s, dt) {
       mineTick(s, d, dt);
       break;
     case "seek":
-      s.timer -= dt;
+      s.timer -= dt / hz(s, "seek");
       if (s.timer <= 0) { s.foe = s.run ? spawnRunFoe(s) : spawnFoe(s, false); s.mode = "fight"; s.atkT = 0; fx(s, "spawn"); log(s, "k", `Contact: ${s.foe.name} (lvl ${s.foe.L}).`); }
       break;
     case "fight":
@@ -1429,8 +1445,8 @@ function useAbility(s, i, byAI) {
     s.buffs.push({ id: a.id, t: a.dur, buff: a.buff });
     log(s, "a", `${who}: ${a.name}.`);
   } else if (a.type === "shield") {
-    s.shield = Math.max(s.shield, d.hp * a.amt);
-    log(s, "a", `${who}: ${a.name} absorbs ${fmt(d.hp * a.amt)}.`);
+    s.shield = Math.max(s.shield, d.hp * a.amt * hz(s, "shield"));
+    log(s, "a", `${who}: ${a.name} absorbs ${fmt(d.hp * a.amt * hz(s, "shield"))}.`);
   } else if (a.type === "heal") {
     s.hp = Math.min(d.hp, s.hp + d.hp * a.amt);
     log(s, "g", `${who}: ${a.name} restores ${fmt(d.hp * a.amt)}.`);
@@ -1471,11 +1487,11 @@ function killFoe(s, d) {
   if (f.kind) s.stats.foeKills[f.kind] = (s.stats.foeKills[f.kind] || 0) + 1;
   s.streak = (s.streak || 0) + 1;
   if (s.streak > (s.bestStreak || 0)) s.bestStreak = s.streak;
-  const cap = streakCap(s), streakMul = 1 + Math.min(s.streak, cap) * 0.01;
+  const cap = streakCap(s), streakMul = 1 + Math.min(s.streak, cap) * 0.01 * hz(s, "streak");
   if (s.streak === 10 || s.streak === 20 || s.streak === cap) fx(s, "banner", { lines: [`${s.streak} KILL STREAK`, `+${Math.min(s.streak, cap)}% xp and minerals`], col: "#e8b43c", snd: "streak", small: true });
   contractEvent(s, "streak", s.streak);
-  const eliteMul = f.elite ? 3 : 1, pockets = (1 + 0.2 * perk(s, "pockets")) * (1 + CYCLE_PAY * (s.ascensions || 0));
-  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul;
+  const eliteMul = f.elite ? 3 : 1, pockets = (1 + 0.2 * perk(s, "pockets")) * (1 + CYCLE_PAY * (s.ascensions || 0)) * hz(s, "pay");
+  let xp = (6 + 3.2 * Math.pow(f.L, 1.35)) * xpMod * (1 + 0.05 * s.upg.logistics) * ess * (f.boss ? 12 : 1) * (f.run ? 2.5 : 1) * streakMul * eliteMul * hz(s, "xp");
   let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4) * streakMul * eliteMul * pockets;
   let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 || evOn(s, "leak") ? 1 + Math.floor(f.L * 0.15) : 0;
   if (evOn(s, "convoy")) min *= 2;
@@ -1495,7 +1511,7 @@ function killFoe(s, d) {
   if (!f.run && !f.boss) { contractEvent(s, "kills", 1); contractEvent(s, "foe", 1, f.idx); }
   gainXp(s, xp);
   // loot
-  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || f.hybrid || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) * (evOn(s, "field") ? 2 : 1) || s.stats.kills === 2 || s.stats.kills === 6 ? 1 : 0; // the second and sixth kills always drop something, so new players see loot in the first minute
+  const drops = f.run && f.boss ? (f.raid ? 3 : 2) : f.boss || f.elite || f.hybrid || rnd() < (f.run ? 0.35 : 0.16) * (1 + 0.15 * perk(s, "scavenger")) * (evOn(s, "field") ? 2 : 1) * hz(s, "drop") || s.stats.kills === 2 || s.stats.kills === 6 ? 1 : 0; // the second and sixth kills always drop something, so new players see loot in the first minute
   for (let i = 0; i < drops; i++) {
     const floor = f.raid && f.boss ? 3 : f.boss || f.elite ? 2 : f.hybrid ? 1 : 0;
     const rarity = Math.max(floor, rollRarity(f.raid ? 4 : f.boss || f.run || f.hybrid ? 2 : 0));
@@ -1776,7 +1792,7 @@ function startBoss(s) {
 function travel(s, z, why) {
   if (s.run) return;
   s.zone = z; s.foe = null; s.mode = "seek"; s.timer = 2; s.seen[z] = true; endStreak(s, "travelled");
-  log(s, "w", `Travelling to ${ZONES[z].name}.`);
+  log(s, "w", `Travelling to ${ZONES[z].name}.${HAZARDS[ZONES[z].id] ? ` ${HAZARDS[ZONES[z].id].name}: ${HAZARDS[ZONES[z].id].desc}` : ""}`);
   if (why) decide(s, "Travel", why);
   bump();
 }
@@ -2439,7 +2455,8 @@ function renderStatic() {
   $("tEssWrap").title = `${S.essence} Xel'Naga essence: +${S.essence * 4}% damage, health and experience · cycle ${S.ascensions + 1}`;
   const dg = S.run && DUNGEONS[S.run.d];
   $("zName").textContent = dg ? dg.name : z.name;
-  $("zSector").textContent = dg ? `${dg.raid ? "Raid" : "Dungeon"} · ${z.name}` : z.sector;
+  $("zSector").textContent = dg ? `${dg.raid ? "Raid" : "Dungeon"} · ${z.name}` : HAZARDS[z.id] ? `${z.sector} · ${HAZARDS[z.id].name}` : z.sector;
+  $("zSector").title = !dg && HAZARDS[z.id] ? HAZARDS[z.id].desc : "";
   $("zRange").textContent = dg ? `Level ${dLevel(dg)}` : `Levels ${z.min}–${z.max}`;
   $("hStats").innerHTML = [
     ["Damage", fmt(d.atk)], ["Attack speed", d.aspd.toFixed(2) + "/s"], ["Critical", pct(d.crit)],
@@ -2497,6 +2514,7 @@ function renderPane() {
       const open = i <= S.unlocked;
       h += `<div class="card ${i === S.zone ? "cur" : open ? "" : "locked"}"><div class="row"><h3>${zz.name}</h3><span class="num">Lv ${zz.min}–${zz.max}</span></div>
         <p>${open ? zz.blurb : "Defeat the previous zone's boss to unlock."}</p>
+        ${open && HAZARDS[zz.id] ? `<p class="hz"><b>${HAZARDS[zz.id].name}.</b> ${HAZARDS[zz.id].desc}</p>` : open ? `<p class="hz"><b>Open ground.</b> No zone hazard here.</p>` : ""}
         <div class="row"><span class="label">${S.bosses[i] ? "Cleared" : open ? "Open" : "Locked"}</span>${open && i !== S.zone ? `<button class="btn small" data-travel="${i}">Travel</button>` : i === S.zone ? '<span class="label">You are here</span>' : ""}</div>
         ${open ? (pl => `<div class="pol plan"><span><b>Zone plan</b><small>Autopilot: stay here until the level (0 for none) and spend part of the time mining.${i === S.zone && pl.hold > S.level ? ` Holding until level ${pl.hold}.` : ""}</small></span>
           <span class="btns"><label class="mini">Hold to <input type="number" data-plannum="hold" data-zone="${i}" min="0" max="${MAX_LEVEL}" value="${pl.hold || 0}"></label><select data-plansel="mine" data-zone="${i}">${PLAN_MINE.map((m, k) => `<option value="${k}" ${pl.mine === k ? "selected" : ""}>Mining: ${m.name}</option>`).join("")}</select></span></div>`)(planOf(S, i)) : ""}</div>`;
@@ -2607,7 +2625,7 @@ function renderPane() {
     ZONES.forEach((zz, i) => {
       if (!S.seen[i]) return;
       const foes = zz.foes.map(e => { const n = fk[e.name] || 0, open = n >= LORE_AT; return `<div class="beast ${open ? "" : "locked"}"><span><b>${e.name}</b><span class="sub">${open ? FOE_LORE[e.name] || "" : `Intel in ${LORE_AT - n} more kill${LORE_AT - n === 1 ? "" : "s"}.`}</span></span><span class="num">${n}</span></div>`; }).join("");
-      h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${foes}${S.bosses[i] ? `<div class="beast"><span><b>${zz.boss.name}</b>, ${zz.boss.title}<span class="sub">${bossLine(S, zz)}</span>${BOSS_MOVES[zz.boss.name] ? `<span class="sub">Signature: ${esc(BOSS_MOVES[zz.boss.name].name)} · ${moveDesc(BOSS_MOVES[zz.boss.name])}</span>` : ""}</span><span class="num">${fk[zz.boss.name] || 0}</span></div>` : ""}</div>`;
+      h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${HAZARDS[zz.id] ? `<p class="hz"><b>${HAZARDS[zz.id].name}.</b> ${HAZARDS[zz.id].desc}</p>` : ""}${foes}${S.bosses[i] ? `<div class="beast"><span><b>${zz.boss.name}</b>, ${zz.boss.title}<span class="sub">${bossLine(S, zz)}</span>${BOSS_MOVES[zz.boss.name] ? `<span class="sub">Signature: ${esc(BOSS_MOVES[zz.boss.name].name)} · ${moveDesc(BOSS_MOVES[zz.boss.name])}</span>` : ""}</span><span class="num">${fk[zz.boss.name] || 0}</span></div>` : ""}</div>`;
     });
     DUNGEONS.forEach((dg, i) => {
       if (!S.bosses[dg.zone]) return;
