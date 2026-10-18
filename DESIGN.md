@@ -132,6 +132,15 @@ Austin asked for leveling to feel powerful and for the game to keep pulling you 
   contracts); the first version paid a quarter level per contract with instant refills and cut that to 2–3 h, which is
   why the refill timer exists.
 
+## Retreat and return
+- **Flee**: a policy (default on, below 20% health) that breaks off a losing fight against an ordinary enemy, once a
+  minute, then rests; never against bosses or inside instances, where a wipe should stay a wipe. A Flee button appears
+  during such fights in manual play. In 8 h sims it cuts deaths from 5–6 to 2 without changing the pace to Amon, which is
+  the retreat rule Azeroth Idle's policy list calls "flee at %".
+- **Supply drop**: coming back after 4 or more hours away adds a rare-or-better item for the hero's level to the "While you
+  were away" summary, so a long absence has something waiting at the end of it.
+- The layout was checked at phone width (390 px): panels stack, no horizontal scroll.
+
 ## Not done yet / ideas
 - Real multiplayer (shared realm, chat, parties, leaderboards) needs a server.
 - Race-specific storylines (today every race follows the same quest givers).
