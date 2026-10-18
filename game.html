@@ -321,6 +321,7 @@ textarea { width: 100%; min-height: 90px; font: 11px var(--f-mono); resize: vert
       <div class="actions">
         <button class="btn" id="engageBtn">Engage</button>
         <button class="btn" id="restBtn">Rest</button>
+        <button class="btn" id="mineBtn">Mine</button>
         <button class="btn" id="bossBtn">Challenge boss</button>
         <button class="btn" id="leaveBtn" hidden>Leave instance</button>
       </div>
@@ -610,11 +611,25 @@ const UPGRADES = [
 ];
 const UPG_BUILDING = { terran: "Engineering Bay", protoss: "Forge", zerg: "Evolution Chamber" };
 
+// Professions: three skills, levelled by use, with race-flavoured names.
+const PROFS = ["mining", "salvage", "craft"];
+const PROF_NAMES = {
+  terran: { mining: "Mining", salvage: "Salvaging", craft: "Engineering", shards: "Crystal Shards", scrap: "Scrap", cores: "Fusion Cores", stim: "Combat Stim" },
+  protoss: { mining: "Khaydarin Harvesting", salvage: "Reclamation", craft: "Forging", shards: "Khaydarin Shards", scrap: "Reclaimed Alloy", cores: "Psi Cores", stim: "Khala Focus" },
+  zerg: { mining: "Creep Harvesting", salvage: "Consumption", craft: "Evolution", shards: "Essence Shards", scrap: "Biomatter", cores: "Primal Cores", stim: "Adrenal Surge" },
+};
+const PROF_MAX = 50;
+const profXpNext = L => Math.floor(40 + 18 * Math.pow(L, 1.6));
+const profLvl = (s, k) => (s.prof && s.prof[k] ? s.prof[k].lvl : 1);
+// Craft tiers: what the crafting skill guarantees.
+const CRAFT_TIERS = [{ lvl: 1, rarity: 1 }, { lvl: 15, rarity: 2 }, { lvl: 30, rarity: 3 }, { lvl: 45, rarity: 3, legend: 0.15 }];
+const STIM_DUR = 600;
+
 const DEFAULT_POL = {
   autopilot: true, engage: true, abilities: true, restAt: 40, restTo: 95,
   equip: true, sell: 2, talents: true, upgrades: true, crates: true,
   advance: true, boss: true, bossMargin: 1.3, retreat: true, ascend: false,
-  loadout: true, dungeons: true,
+  loadout: true, dungeons: true, mine: true, craft: true, stims: true,
 };
 
 /* ============================================================================
@@ -649,6 +664,7 @@ function newGame(name, race, cls, carry) {
     tal: Object.fromEntries(TALENTS.map(t => [t.id, 0])), talPts: 0,
     pol: { ...DEFAULT_POL, ...(carry?.pol || {}) },
     foe: null, mode: "seek", timer: 1, cds: {}, buffs: [], atkT: 0, sinceHit: 99, decT: 0,
+    prof: carry?.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])), mats: carry?.mats || { scrap: 0, shards: 0, cores: 0 }, stim: 0,
     deaths: [], bossNote: "", loadout: [0, 1, 2], marks: carry?.marks || 0, comp: carry?.comp || {}, run: null, dcd: {}, stats: { kills: 0, deaths: 0, bosses: 0, items: 0, played: 0, ...(carry?.stats ? { totalPlayed: carry.stats.totalPlayed } : {}) },
     log: [], feed: [], lastSeen: Date.now(),
   };
@@ -699,7 +715,7 @@ function gearSum(gear) {
 }
 function derive(s, o = {}) {
   const c = CLASSES[s.cls], L = o.level || s.level, g = gearSum(o.gear || s.gear), t = o.tal || s.tal, u = o.upg || s.upg;
-  const ess = 1 + 0.04 * s.essence;
+  const ess = (1 + 0.04 * s.essence) * (s.stim > 0 ? 1.15 : 1);
   return {
     atk: (c.base.atk * (1 + 0.13 * (L - 1)) + g.atk * 1.15 / c.base.aspd) * (1 + 0.03 * t.ballistics + 0.07 * u.weapons) * ess,
     hp: (c.base.hp * (1 + 0.15 * (L - 1)) + g.hp) * (1 + 0.04 * t.plating + 0.06 * u.armor) * ess,
@@ -771,6 +787,7 @@ function step(s, dt) {
   s.stats.played += dt;
   s.stats.totalPlayed = (s.stats.totalPlayed || 0) + dt;
   s.sinceHit += dt;
+  if (s.stim > 0) { s.stim -= dt; if (s.stim <= 0) { s.stim = 0; log(s, "k", `${PROF_NAMES[s.race].stim} wore off.`); bump(); } }
   s.hp = Math.min(s.hp, d.hp);
   s.en = Math.min(100, s.en + d.regen * dt);
   for (const k in s.cds) { s.cds[k] -= dt; if (s.cds[k] <= 0) delete s.cds[k]; }
@@ -797,6 +814,9 @@ function step(s, dt) {
       break;
     case "idle":
       if (auto(s, "engage")) { s.mode = "seek"; s.timer = 1; }
+      break;
+    case "mine":
+      mineTick(s, d, dt);
       break;
     case "seek":
       s.timer -= dt;
@@ -920,6 +940,8 @@ function killFoe(s, d) {
   let min = (2 + f.L * 1.6) * (1 + 0.1 * s.upg.salvage) * (s.race === "terran" ? 1.15 : 1) * (f.boss ? 15 : 1) * (0.8 + rnd() * 0.4);
   let gas = f.boss ? 10 + f.L * 2 : rnd() < 0.3 ? 1 + Math.floor(f.L * 0.15) : 0;
   s.minerals += min; s.gas += gas;
+  if (f.boss) { const n = f.raid ? 3 : f.run ? 2 : 1; s.mats.cores += n; log(s, "w", `+${n} ${PROF_NAMES[s.race].cores}.`); }
+  else if (rnd() < 0.08) { s.mats.shards += 1 + Math.floor(f.L / 15); }
   s.stats.kills++;
   log(s, "g", `${f.name} destroyed. +${fmt(xp)} xp, +${fmt(min)} minerals${gas ? `, +${gas} gas` : ""}.`);
   gainXp(s, xp);
@@ -982,7 +1004,7 @@ function gainItem(s, it) {
   if (s.bag.length > 24) {
     // bag full: scrap the lowest-power item
     s.bag.sort((a, b) => itemGain(s, a) - itemGain(s, b));
-    const x = s.bag.shift(); s.minerals += sellValue(x);
+    const x = s.bag.shift(); sellItem(s, x);
     log(s, "k", `Bag full, scrapped ${x.name}.`);
   }
   bump();
@@ -1174,11 +1196,13 @@ function autopilot(s, d) {
     }
   }
   if (P.sell > 0 && s.bag.length) {
-    const junk = s.bag.filter(it => it.rarity < P.sell && itemGain(s, it) <= 0);
+    // junk below the rarity threshold, plus anything short of legendary once the bag is nearly full
+    const full = s.bag.length >= 20;
+    const junk = s.bag.filter(it => itemGain(s, it) <= 0 && (it.rarity < P.sell || (full && it.rarity < 4)));
     if (junk.length) {
-      let v = 0; for (const it of junk) { v += sellValue(it); s.bag.splice(s.bag.indexOf(it), 1); }
-      s.minerals += v;
-      decide(s, "Sell", `Sold ${junk.length} item${junk.length > 1 ? "s" : ""} weaker than current gear for ${fmt(v)} minerals.`);
+      let v = 0, sc = 0; for (const it of junk) { const r = sellItem(s, it); v += r.min; sc += r.scrap; s.bag.splice(s.bag.indexOf(it), 1); }
+      const msg = `Salvaged ${junk.length} item${junk.length > 1 ? "s" : ""} weaker than current gear for ${fmt(v)} minerals and ${sc} ${PROF_NAMES[s.race].scrap}.`;
+      if (junk.length >= 3 || junk.some(it => it.rarity >= 3)) decide(s, "Salvage", msg); else log(s, "k", "Autopilot: " + msg.toLowerCase());
       bump();
     }
   }
@@ -1219,7 +1243,27 @@ function autopilot(s, d) {
     const cost = bondCost(s, c.id), rank = (s.comp[c.id] || {}).rank || 0;
     if (rank < 10 && s.marks >= cost) { s.marks -= cost; s.comp[c.id] = { rank: rank + 1 }; decide(s, "Companion", `Raised ${c.name}'s bond to rank ${rank + 1} for ${cost} Valor.`); bump(); }
   }
+  // 4d. crafting
+  if (P.craft && canCraft(s) && s.bag.length < 22 && (s.craftCd || 0) <= s.stats.played) {
+    const slot = weakestSlot(s), cur = s.gear[slot], t = craftTier(s);
+    const expected = itemBase(s.level + 1) * RARITY[t.rarity].mult;
+    const have = cur ? itemBase(cur.ilvl) * RARITY[cur.rarity].mult : 0;
+    const likely = expected > have * 1.02;
+    if (likely || s.mats.scrap > craftCost(s).scrap * 4) { s.craftCd = s.stats.played + (likely ? 10 : 90); craftItem(s, slot, true); }
+  }
   if (s.run) return; // inside an instance: no travel, bosses or new runs
+  // 4e. mining: when gas is banked but minerals are short for research, or a crate is wanted
+  if (P.mine && s.mode === "seek" && s.hp >= d.hp * 0.9 && (s.mineCd || 0) <= s.stats.played) {
+    const wantUpg = UPGRADES.map(u => upgCost(s, u.id)).filter(c => s.gas >= c.gas && s.minerals < c.min).sort((a, b) => a.min - b.min)[0];
+    const shortShards = P.craft && s.mats.shards < craftCost(s).shards && s.mats.scrap >= craftCost(s).scrap;
+    if (wantUpg || shortShards) {
+      const need = wantUpg ? wantUpg.min - s.minerals : 0;
+      const secs = clamp(Math.ceil(need / mineRate(s)) + (shortShards ? 30 : 0), 20, 120);
+      s.mineCd = s.stats.played + 240;
+      decide(s, "Mine", wantUpg ? `Short ${fmt(need)} minerals for research with gas in hand. Mining for ${secs}s.` : `Out of ${PROF_NAMES[s.race].shards} for crafting. Mining for ${secs}s.`);
+      startMining(s, secs);
+    }
+  }
   // 5. supply crates
   if (P.crates) {
     const c = crateCost(s);
@@ -1229,7 +1273,7 @@ function autopilot(s, d) {
   const q = questState(s, s.zone);
   if (P.boss && !s.bosses[s.zone] && q.i >= z.quests.length && s.mode === "seek" && s.hp >= d.hp * 0.9 && (s.bossLoss || 0) < s.level) {
     const r = bossOdds(s, d);
-    if (r >= P.bossMargin) { decide(s, "Boss", `Estimated survival margin ${r.toFixed(2)}x (need ${P.bossMargin}x). Engaging ${z.boss.name}.`); startBoss(s); }
+    if (r >= P.bossMargin) { if (P.stims) useStim(s, true); decide(s, "Boss", `Estimated survival margin ${r.toFixed(2)}x (need ${P.bossMargin}x). Engaging ${z.boss.name}.`); startBoss(s); }
     else if (s.bossNote !== `${s.zone}:${s.level}`) { s.bossNote = `${s.zone}:${s.level}`; decide(s, "Boss", `Margin against ${z.boss.name} is ${r.toFixed(2)}x, need ${P.bossMargin}x. Farming for now.`); }
   }
   // 6b. dungeons and raids
@@ -1243,6 +1287,7 @@ function autopilot(s, d) {
       const wins = rehearse(s, i, party, 3);
       if (wins >= 2) {
         decide(s, dg.raid ? "Raid" : "Dungeon", `Rehearsed ${dg.name} 3 times with ${party.map(id => COMPANIONS.find(c => c.id === id).name).join(" and ")}: cleared ${wins}. Going in.`);
+        if (P.stims && dg.raid) useStim(s, true);
         enterRun(s, i, party);
         return;
       }
@@ -1250,6 +1295,7 @@ function autopilot(s, d) {
       break;
     }
   }
+  if (s.mode === "mine") return;
   // 7. retreat
   if (P.retreat && s.deaths.length >= 3 && s.zone > 0 && s.mode !== "fight") {
     s.holdUntil = s.level + 2; s.deaths = [];
@@ -1267,6 +1313,74 @@ function autopilot(s, d) {
   }
   // 9. ascend
   if (P.ascend && s.bosses[ZONES.length - 1]) ascend();
+}
+
+/* ---------- professions ---------- */
+function profGain(s, k, xp) {
+  const pr = s.prof[k];
+  if (pr.lvl >= PROF_MAX) return;
+  pr.xp += xp;
+  while (pr.lvl < PROF_MAX && pr.xp >= profXpNext(pr.lvl)) { pr.xp -= profXpNext(pr.lvl); pr.lvl++; log(s, "w", `${PROF_NAMES[s.race][k]} is now level ${pr.lvl}.`); bump(); }
+}
+function sellItem(s, it) {
+  const lvl = profLvl(s, "salvage");
+  const min = Math.floor(sellValue(it) * (1 + 0.02 * lvl));
+  const scrap = Math.max(1, Math.floor((1 + it.ilvl * 0.15) * (1 + it.rarity * 0.5) * (1 + 0.03 * lvl)));
+  s.minerals += min; s.mats.scrap += scrap;
+  if (it.rarity >= 3 && rnd() < 0.5) s.mats.cores += 1;
+  profGain(s, "salvage", 6 + it.ilvl + it.rarity * 4);
+  return { min, scrap };
+}
+function mineRate(s) { const z = zoneOf(s), lvl = profLvl(s, "mining"); return (3 + z.max * 1.4) * (1 + 0.03 * lvl) * (1 + 0.1 * s.upg.salvage); }
+function mineTick(s, d, dt) {
+  s.mineT = (s.mineT || 0) + dt;
+  s.hp = Math.min(d.hp, s.hp + d.hp * 0.02 * dt);
+  while (s.mineT >= 1) {
+    s.mineT -= 1;
+    s.minerals += mineRate(s);
+    if (rnd() < 0.15 + 0.004 * profLvl(s, "mining")) { s.mats.shards += 1 + (rnd() < 0.3 ? 1 : 0); fx(s, "shard"); }
+    profGain(s, "mining", 2 + zoneOf(s).max * 0.3);
+    if (s.mineFor !== undefined) s.mineFor -= 1;
+  }
+  if (s.mineFor !== undefined && s.mineFor <= 0 && s.pol.autopilot) { s.mode = auto(s, "engage") ? "seek" : "idle"; s.timer = 1; log(s, "k", "Back from the mineral field."); delete s.mineFor; bump(); }
+}
+function startMining(s, seconds) {
+  if (s.mode === "fight" || s.mode === "dead" || s.run) return false;
+  s.mode = "mine"; s.foe = null; s.mineFor = seconds; bump();
+  return true;
+}
+function craftTier(s) { const lvl = profLvl(s, "craft"); let t = CRAFT_TIERS[0]; for (const x of CRAFT_TIERS) if (lvl >= x.lvl) t = x; return t; }
+function craftCost(s) { const L = s.level, t = craftTier(s); return { scrap: Math.floor(30 + L * 5), shards: Math.floor(4 + L * 0.8), cores: t.rarity >= 3 ? 1 : 0 }; }
+function canCraft(s) { const c = craftCost(s); return s.mats.scrap >= c.scrap && s.mats.shards >= c.shards && s.mats.cores >= c.cores; }
+function craftItem(s, slot, byAI) {
+  if (!canCraft(s)) return null;
+  const c = craftCost(s), t = craftTier(s);
+  s.mats.scrap -= c.scrap; s.mats.shards -= c.shards; s.mats.cores -= c.cores;
+  let rarity = Math.max(t.rarity, rollRarity(1));
+  if (t.legend && rnd() < t.legend) rarity = 4;
+  const it = makeItem(s, slot, Math.min(MAX_LEVEL, s.level + 1), rarity);
+  it.crafted = true;
+  profGain(s, "craft", 40 + s.level * 4);
+  if (byAI) decide(s, "Craft", `Crafted ${it.name} for ${c.scrap} ${PROF_NAMES[s.race].scrap}${c.cores ? " and a core" : ""}.`);
+  else log(s, "w", `Crafted ${it.name}.`);
+  gainItem(s, it);
+  return it;
+}
+function stimCost(s) { return { shards: 8 + Math.floor(s.level / 2), cores: 0 }; }
+function useStim(s, byAI) {
+  const c = stimCost(s);
+  if (s.stim > 0 || s.mats.shards < c.shards) return false;
+  s.mats.shards -= c.shards; s.stim = STIM_DUR;
+  log(s, "w", `${PROF_NAMES[s.race].stim}: +15% damage and health for ${dur(STIM_DUR)}.`);
+  if (byAI) decide(s, "Stim", `Used ${PROF_NAMES[s.race].stim} before a hard fight.`);
+  fx(s, "ability", { a: { type: "buff", name: PROF_NAMES[s.race].stim } });
+  bump(); return true;
+}
+// The slot whose equipped item is weakest relative to the hero's level.
+function weakestSlot(s) {
+  let best = null, score = Infinity;
+  for (const k of SLOTS) { const it = s.gear[k]; const sc = it ? it.ilvl + it.rarity * 3 : -99; if (sc < score) { score = sc; best = k; } }
+  return best;
 }
 
 /* ---------- shop & upgrades ---------- */
@@ -1293,7 +1407,7 @@ function buyCrate(s, byAI) {
   if (s.minerals < c) return false;
   s.minerals -= c;
   const it = makeItem(s, pick(SLOTS), Math.min(MAX_LEVEL, Math.max(s.level, zoneOf(s).min)), Math.max(1, rollRarity(0.6)));
-  if (byAI) decide(s, "Supply", `Bought a supply crate for ${fmt(c)} minerals: ${it.name}.`);
+  if (byAI && (it.rarity >= 2 || itemGain(s, it) > 0)) decide(s, "Supply", `Bought a supply crate for ${fmt(c)} minerals: ${it.name}${itemGain(s, it) > 0 ? " (an upgrade)" : ""}.`);
   gainItem(s, it);
   return true;
 }
@@ -1304,7 +1418,7 @@ function ascend() {
   if (!S.bosses[ZONES.length - 1]) return;
   if (S.run) leaveRun(S);
   const gain = ascendGain(S);
-  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks };
+  const carry = { essence: S.essence + gain, ascensions: S.ascensions + 1, upg: S.upg, pol: S.pol, stats: S.stats, comp: S.comp, marks: S.marks, prof: S.prof, mats: S.mats };
   S = newGame(S.name, S.race, S.cls, carry);
   log(S, "w", `Ascended. The Xel'Naga grant you ${gain} essence (+${gain * 4}% to all stats and experience).`);
   decide(S, "Ascend", `Ascension ${S.ascensions}: kept research and gained ${gain} Xel'Naga essence.`);
@@ -1335,6 +1449,7 @@ function load() {
 }
 function hydrate(o) {
   if (!o || !o.cls || !CLASSES[o.cls]) return null;
+  o.prof = o.prof || Object.fromEntries(PROFS.map(k => [k, { lvl: 1, xp: 0 }])); o.mats = o.mats || { scrap: 0, shards: 0, cores: 0 }; o.stim = o.stim || 0;
   o.loadout = o.loadout || [0, 1, 2]; o.marks = o.marks || 0; o.comp = o.comp || {}; o.dcd = o.dcd || {}; o.run = o.run || null;
   o.pol = { ...DEFAULT_POL, ...o.pol };
   o.seen = o.seen || { 0: true };
@@ -1407,7 +1522,7 @@ function setupGameUI() {
   UI.rev++; UI.logRev++; UI.feedRev++;
   renderStatic();
 }
-const TABS = [["quests", "Quests"], ["map", "Map"], ["dungeons", "Dungeons"], ["bag", "Gear"], ["talents", "Build"], ["research", "Research"], ["policies", "Autopilot"], ["codex", "Codex"]];
+const TABS = [["quests", "Quests"], ["map", "Map"], ["dungeons", "Dungeons"], ["bag", "Gear"], ["talents", "Build"], ["research", "Research"], ["crafting", "Crafting"], ["policies", "Autopilot"], ["codex", "Codex"]];
 
 let seenRev = 0, seenLog = 0, seenFeed = 0, seenTab = "";
 function renderStatic() {
@@ -1434,7 +1549,7 @@ function renderStatic() {
   renderPane();
 }
 function renderTabs() {
-  const dots = { talents: S.talPts > 0 || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
+  const dots = { crafting: canCraft(S) && !(S.pol.autopilot && S.pol.craft), talents: S.talPts > 0 || CLASSES[S.cls].abilities.some((a, i) => abLvl(a) === S.level && !S.loadout.includes(i)), bag: S.bag.some(it => itemGain(S, it) > 0.001) };
   $("tabs").innerHTML = TABS.map(([k, n]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${UI.tab === k}">${n}${dots[k] ? '<span class="dot"></span>' : ""}</button>`).join("");
 }
 function renderPane() {
@@ -1504,6 +1619,21 @@ function renderPane() {
         <span class="btns"><button class="btn small" data-upg="${u.id}" ${ok ? "" : "disabled"}>Research</button></span></div>`;
     }
   }
+  if (UI.tab === "crafting") {
+    const N = PROF_NAMES[S.race], cc = craftCost(S), t = craftTier(S), sc = stimCost(S);
+    h += `<div class="sum"><div><span class="label">${N.scrap}</span><span class="num">${fmt(S.mats.scrap)}</span></div><div><span class="label">${N.shards}</span><span class="num">${S.mats.shards}</span></div><div><span class="label">${N.cores}</span><span class="num">${S.mats.cores}</span></div></div>`;
+    for (const k of PROFS) {
+      const pr = S.prof[k], desc = { mining: `Gather minerals and ${N.shards} instead of fighting. ${fmt(mineRate(S))} minerals/s here.`, salvage: `Selling gear also yields ${N.scrap}. Epic gear may give a core.`, craft: `Turn ${N.scrap} and ${N.shards} into gear. Tier: ${RARITY[t.rarity].name}${t.legend ? " with a legendary chance" : ""}${t.rarity < 3 ? `, next tier at level ${CRAFT_TIERS.find(x => x.lvl > pr.lvl)?.lvl}` : ""}.` }[k];
+      h += `<div class="item"><span><b>${N[k]}</b> <span class="num">Lv ${pr.lvl}</span><span class="sub">${desc}</span>
+        <div class="bar" style="--c:var(--xp);margin-top:6px"><i style="width:${pr.lvl >= PROF_MAX ? 100 : pr.xp / profXpNext(pr.lvl) * 100}%"></i></div></span>
+        ${k === "mining" ? `<span class="btns"><button class="btn small" data-act="mine" ${S.mode === "fight" || S.mode === "dead" || S.run ? "disabled" : ""}>${S.mode === "mine" ? "Stop" : "Mine"}</button></span>` : ""}</div>`;
+    }
+    h += `<div class="card ${canCraft(S) ? "cur" : ""}"><div class="row"><h3>Craft gear</h3><span class="num">${cc.scrap} ${N.scrap} · ${cc.shards} ${N.shards}${cc.cores ? ` · ${cc.cores} core` : ""}</span></div>
+      <p>Makes a level ${Math.min(MAX_LEVEL, S.level + 1)} item of ${RARITY[t.rarity].name} quality or better in the slot you pick.</p>
+      <div class="chips">${SLOTS.map(k => `<button class="chip" data-craft="${k}" ${canCraft(S) ? "" : "disabled"}>${icon(slotIcon(k, S.race), "#8fb3d9", 14)} ${SLOT_LABEL[k]}</button>`).join("")}</div></div>`;
+    h += `<div class="card"><div class="row"><h3>${N.stim}</h3><span class="num">${sc.shards} ${N.shards}</span></div><p>+15% damage and health for ${dur(STIM_DUR)}. ${S.stim > 0 ? `<b>Active, ${dur(S.stim)} left.</b>` : "The autopilot uses one before bosses and raids."}</p>
+      <div class="btns" style="justify-content:start"><button class="btn small" data-act="stim" ${S.stim > 0 || S.mats.shards < sc.shards ? "disabled" : ""}>Use</button></div></div>`;
+  }
   if (UI.tab === "talents") {
     const abs = CLASSES[S.cls].abilities;
     h += `<div class="row"><h3 class="label">Abilities · ${S.loadout.length}/3 slotted</h3>${S.pol.autopilot && S.pol.loadout ? '<span class="note">Autopilot picks these</span>' : ""}</div>`;
@@ -1549,6 +1679,9 @@ function policiesPane() {
     ${tog("talents", "Spend talent points", "Pick whichever talent adds the most power.")}
     ${tog("upgrades", "Research upgrades", `Spend gas at the ${UPG_BUILDING[S.race]} on the best-value upgrade.`)}
     ${tog("crates", "Buy supply crates", "Spend spare minerals on gear crates.")}
+    ${tog("mine", "Mine when short", "Go mining when research is held up by minerals, or crafting by shards.")}
+    ${tog("craft", "Craft gear", "Craft for the weakest slot whenever the materials are there and it would be an upgrade.")}
+    ${tog("stims", "Use stims", "Pop a stim before a zone boss or raid.")}
     ${tog("boss", "Challenge bosses", "Attack the zone boss once quests are done and the odds look good.")}
     <div class="pol"><span><b>Boss safety margin</b><small>How much stronger than the boss you must be, by estimate. Higher is safer, lower is faster.</small></span>
       <input type="number" id="polMargin" data-polnum="bossMargin" step="0.1" min="0.5" max="5" value="${P.bossMargin}"></div>
@@ -1574,9 +1707,9 @@ function renderLive() {
   for (const [a, b] of [["hHpBar", "hShBar"], ["aHeroHp", "aHeroSh"]]) { $(a).style.width = hpw + "%"; $(b).style.left = hpw + "%"; $(b).style.width = shw + "%"; }
   $("hEn").textContent = `${Math.floor(S.en)} / 100`;
   $("hEnBar").style.width = S.en + "%";
-  const mode = { fight: "In combat", seek: "Searching", rest: "Resting", idle: "Standing by", dead: "Down" }[S.mode];
+  const mode = { fight: "In combat", seek: "Searching", rest: "Resting", idle: "Standing by", dead: "Down", mine: "Mining" }[S.mode];
   $("hState").textContent = mode;
-  $("aHeroMeta").textContent = `Lv ${S.level} ${CLASSES[S.cls].name}${S.buffs.length ? " · " + S.buffs.map(b => CLASSES[S.cls].abilities.find(a => a.id === b.id)?.name).join(", ") : ""}`;
+  $("aHeroMeta").textContent = `Lv ${S.level} ${CLASSES[S.cls].name}${S.stim > 0 ? " · Stimmed" : ""}${S.buffs.length ? " · " + S.buffs.map(b => CLASSES[S.cls].abilities.find(a => a.id === b.id)?.name).join(", ") : ""}`;
   const fe = $("aFoe");
   fe.classList.toggle("boss", !!(f && f.boss));
   if (f) {
@@ -1585,13 +1718,14 @@ function renderLive() {
     $("aFoeHp").style.width = clamp(f.hp / f.max * 100, 0, 100) + "%";
   } else {
     $("aFoeName").textContent = "No contact";
-    $("aFoeMeta").textContent = S.mode === "seek" ? `Scanning ${z.name}` : S.mode === "rest" ? "Resting between fights" : S.mode === "dead" ? `Medevac in ${Math.ceil(S.timer)}s` : "Press Engage to find a target";
+    $("aFoeMeta").textContent = S.mode === "mine" ? "Mineral field" : S.mode === "seek" ? `Scanning ${z.name}` : S.mode === "rest" ? "Resting between fights" : S.mode === "dead" ? `Medevac in ${Math.ceil(S.timer)}s` : "Press Engage to find a target";
     $("aFoeHp").style.width = "0%";
   }
   let ml = "";
   if (S.mode === "idle") ml = S.pol.autopilot ? "Autopilot holding. Turn on Keep fighting to continue." : "<b>Manual control.</b> Engage enemies, fire abilities with 1, 2, 3, and rest when you need to.";
   else if (S.mode === "fight") ml = S.pol.autopilot && S.pol.abilities ? "<b>Autopilot</b> is choosing abilities. Click one to fire it yourself." : "<b>Your call.</b> Fire abilities with the buttons or keys 1, 2, 3.";
   else if (S.mode === "rest") ml = "Recovering health and energy.";
+  else if (S.mode === "mine") ml = `Mining: ${fmt(mineRate(S))} minerals a second${S.mineFor > 0 ? `, ${Math.ceil(S.mineFor)}s to go` : ""}. Press Engage to stop.`;
   else if (S.mode === "dead") ml = "Waiting for the medevac.";
   else ml = "Moving to the next contact.";
   $("modeLine").innerHTML = ml;
@@ -1606,7 +1740,8 @@ function renderLive() {
     b.disabled = !usable;
     b.classList.toggle("lit", usable);
   });
-  $("engageBtn").disabled = !(S.mode === "idle" || S.mode === "rest");
+  $("engageBtn").disabled = !(S.mode === "idle" || S.mode === "rest" || S.mode === "mine");
+  $("mineBtn").disabled = !(S.mode === "idle" || S.mode === "seek" || S.mode === "rest") || !!S.run;
   $("restBtn").disabled = !(S.mode === "idle" || S.mode === "seek") || S.hp >= d.hp - 0.5;
   $("aParty").innerHTML = S.run ? S.run.party.map(m => { const c = COMPANIONS.find(x => x.id === m.id); return `<div class="member ${m.hp <= 0 ? "down" : ""}"><span>${esc(c.name)} <span class="role">${ROLE_LABEL[c.role]}</span></span><div class="bar" style="--c:var(--hp)"><i style="width:${clamp(m.hp / m.max * 100, 0, 100)}%"></i></div></div>`; }).join("") : "";
   $("leaveBtn").hidden = !S.run;
@@ -1632,7 +1767,8 @@ document.addEventListener("keydown", e => {
   if (!S || $("game").hidden || e.target.matches("input, textarea, select")) return;
   if (["1", "2", "3"].includes(e.key)) useAbility(S, S.loadout[+e.key - 1], false);
 });
-$("engageBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "rest") { S.mode = "seek"; S.timer = 0.5; } });
+$("engageBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "rest" || S.mode === "mine") { S.mode = "seek"; S.timer = 0.5; delete S.mineFor; } });
+$("mineBtn").addEventListener("click", () => { if (startMining(S, S.pol.autopilot ? 60 : undefined)) log(S, "k", "Heading to the mineral field."); });
 $("restBtn").addEventListener("click", () => { if (S.mode === "idle" || S.mode === "seek") { S.mode = "rest"; log(S, "k", "You sit down to rest."); } });
 $("leaveBtn").addEventListener("click", () => leaveRun(S));
 $("soundBtn").addEventListener("click", () => setSound(!SND.on));
@@ -1649,7 +1785,7 @@ $("pane").addEventListener("click", e => {
   const t = e.target.closest("button"); if (!t) return;
   if (t.dataset.travel) { if (S.run) toast("Leave the instance before travelling."); else if (S.mode !== "fight") travel(S, +t.dataset.travel); else toast("Finish the fight before travelling."); }
   if (t.dataset.equip) { const it = S.bag.find(x => x.id === t.dataset.equip); if (it) { const old = S.gear[it.slot]; S.gear[it.slot] = it; S.bag.splice(S.bag.indexOf(it), 1); if (old) S.bag.push(old); log(S, "k", `Equipped ${it.name}.`); bump(); } }
-  if (t.dataset.sell) { const it = S.bag.find(x => x.id === t.dataset.sell); if (it) { S.minerals += sellValue(it); S.bag.splice(S.bag.indexOf(it), 1); bump(); } }
+  if (t.dataset.sell) { const it = S.bag.find(x => x.id === t.dataset.sell); if (it) { const r = sellItem(S, it); S.bag.splice(S.bag.indexOf(it), 1); toast(`+${fmt(r.min)} minerals, +${r.scrap} ${PROF_NAMES[S.race].scrap}`); bump(); } }
   if (t.dataset.upg) buyUpgrade(S, t.dataset.upg, false);
   if (t.dataset.slot) {
     const i = +t.dataset.slot;
@@ -1675,6 +1811,9 @@ $("pane").addEventListener("click", e => {
   if (t.dataset.pol) { S.pol[t.dataset.pol] = !S.pol[t.dataset.pol]; bump(); }
   const act = t.dataset.act;
   if (act === "crate") buyCrate(S, false);
+  if (act === "mine") { if (S.mode === "mine") { S.mode = S.pol.autopilot ? "seek" : "idle"; S.timer = .5; delete S.mineFor; bump(); } else startMining(S, S.pol.autopilot ? 60 : undefined); }
+  if (act === "stim") useStim(S, false);
+  if (t.dataset.craft) { if (S.pol.autopilot && S.pol.craft) { S.pol.craft = false; toast("Autopilot crafting is now off, so your materials are yours to spend."); } craftItem(S, t.dataset.craft, false); }
   if (act === "ascend") confirmBox("Ascend?", "Your level, zones, gear and talents reset. Research, policies and essence carry over.", "Ascend", ascend);
   if (act === "export") openExport();
   if (act === "import") openImport();
@@ -2084,6 +2223,7 @@ function processFx(L) {
     } else if (e.type === "spawn") { R.foe.x = 160 * L.k; R.foe.flash = 0; }
     else if (e.type === "level") { burst(heroX, heroY + 30 * L.k, "#c9b04e", 40, 2, 5); addText(heroX, heroY - 70 * L.k, "Level " + S.level, "#ffd84a", true); sfx("level"); }
     else if (e.type === "loot") { if (e.rarity >= 2) { addText(foeX, foeY - 70 * L.k, RARITY[e.rarity].name + " loot", ["#9aa5b1", "#5fcf6a", "#4c9bff", "#b484ff", "#ff9a3c"][e.rarity], true); sfx(e.rarity >= 3 ? "epic" : "loot"); } }
+    else if (e.type === "shard") { burst(heroX + 40 * L.k, heroY + 30 * L.k, "#7fd8ff", 6, 2, 3); sfx("loot"); }
     else if (e.type === "die") { burst(heroX, heroY + 20 * L.k, "#888888", 20, 3); sfx("die"); }
     else if (e.type === "quest") sfx("quest");
   }
@@ -2140,6 +2280,11 @@ function renderScene(now) {
   if (hp) { c.save(); c.translate(L.hero.x, L.hero.y); c.rotate(-Math.PI / 2 * .9); drawUnit(c, hk, hpal, 0, 0, L.k, 1, 0, 0, .45); c.restore(); }
   else {
     const restY = S.mode === "rest" ? 6 * L.k : 0;
+    if (S.mode === "mine") { // a mineral cluster to work on
+      const mx = L.hero.x + 70 * L.k, my = L.hero.y;
+      for (const [dx, h, w] of [[-14, 26, 9], [0, 38, 11], [14, 22, 8], [6, 30, 7]]) { glowOn(c, "#7fd8ff", 10); poly(c, [mx + dx * L.k - w * L.k, my, mx + dx * L.k, my - h * L.k, mx + dx * L.k + w * L.k, my], "#5fb8e6"); glowOff(c); }
+      if (!REDUCED && Math.random() < .15) burst(mx, my - 20 * L.k, "#bfe9ff", 2, 2, 2);
+    }
     drawUnit(c, hk, hpal, L.hero.x + R.hero.lunge * 10 * L.k, L.hero.y + restY, L.k, 1, t, R.hero.flash, 1);
     if (S.mode === "rest" && !REDUCED && Math.random() < .05) addText(L.hero.x + 20 * L.k, L.hero.y - 80 * L.k, "z", "#9ad9ff", false);
     if (S.shield + S.pshield > 1) { c.beginPath(); c.ellipse(L.hero.x, L.hero.y - 42 * L.k, 34 * L.k, 50 * L.k, 0, 0, Math.PI * 2); c.strokeStyle = "rgba(154,217,255,.45)"; c.lineWidth = 2; c.stroke(); c.fillStyle = "rgba(154,217,255,.07)"; c.fill(); }
