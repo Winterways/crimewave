@@ -730,6 +730,34 @@ const COMPANIONS = [
   { id: "dehaka", name: "Dehaka", role: "tank", from: 6, blurb: "Primal pack leader who grows stronger with every essence he devours." },
 ];
 const ROLE_LABEL = { dps: "Damage", tank: "Tank", healer: "Healer" };
+// Signature abilities fire on their own every cd seconds of combat inside an instance. Damage is in seconds of the
+// companion's dps, heals in fractions of max health, so they scale with bond rank, essence and the Bloodline perk.
+const SIGNATURES = {
+  raynor:   { name: "Suppressing Fire", cd: 14, dmg: 4, stun: 1, desc: "A burst of fire for 4 s of his damage that stuns the target for 1 s." },
+  kerrigan: { name: "Psionic Lash", cd: 18, dmg: 7, desc: "A psionic strike for 7 s of her damage." },
+  zeratul:  { name: "Shadow Ambush", cd: 15, dmg: 5, dodge: 3, desc: "Strikes for 5 s of his damage; the hero dodges everything for 3 s." },
+  tassadar: { name: "Khala's Embrace", cd: 20, healAll: 0.15, desc: "Heals the whole party, hero included, for 15% of max health." },
+  fenix:    { name: "Dragoon Shell", cd: 20, taunt: 6, selfHeal: 0.12, desc: "Draws every attack for 6 s and repairs 12% of his own health." },
+  morales:  { name: "Stim Dispenser", cd: 18, healLow: 0.3, energy: 15, desc: "Heals the most wounded ally for 30% and gives the hero 15 energy." },
+  dehaka:   { name: "Devour Essence", cd: 16, dmg: 4, selfHeal: 0.15, desc: "Bites for 4 s of his damage and regrows 15% of his health." },
+};
+function fireSignature(s, d, m, cs) {
+  const sig = SIGNATURES[m.id], f = s.foe; if (!sig || !f) return;
+  m.cd = sig.cd;
+  if (sig.dmg) { const dmg = cs.dps * sig.dmg * (1 - dr(f.def, s.level)); f.hp -= dmg; fx(s, "sig", { to: s.run.party.indexOf(m), name: sig.name, dmg, kind: "dmg" }); }
+  else fx(s, "sig", { to: s.run.party.indexOf(m), name: sig.name, kind: sig.taunt ? "taunt" : "heal" });
+  if (sig.stun) f.stun = Math.max(f.stun || 0, sig.stun);
+  if (sig.dodge) s.buffs.push({ id: "ambush", t: sig.dodge, buff: { dodge: 1 } });
+  if (sig.taunt) m.taunt = sig.taunt;
+  if (sig.selfHeal) m.hp = Math.min(m.max, m.hp + m.max * sig.selfHeal);
+  if (sig.healAll) { s.hp = Math.min(d.hp, s.hp + d.hp * sig.healAll); for (const o of s.run.party) if (o.hp > 0) o.hp = Math.min(o.max, o.hp + o.max * sig.healAll); }
+  if (sig.healLow) {
+    let low = { r: s.hp / d.hp, hero: true };
+    for (const o of s.run.party) if (o.hp > 0 && o.hp / o.max < low.r) low = { r: o.hp / o.max, m: o };
+    if (low.hero) s.hp = Math.min(d.hp, s.hp + d.hp * sig.healLow); else low.m.hp = Math.min(low.m.max, low.m.hp + low.m.max * sig.healLow);
+  }
+  if (sig.energy) s.energy = Math.min(d.energy, s.energy + sig.energy);
+}
 
 // One instance per zone, unlocked by that zone's boss. Two are raids: longer and harder, with better loot.
 const DUNGEONS = [
@@ -1398,6 +1426,8 @@ function partyRested(s) { return !s.run || s.run.party.every(m => m.hp >= m.max 
 function pickTarget(s) {
   if (!s.run) return null;
   const alive = s.run.party.filter(m => m.hp > 0);
+  const taunting = alive.find(m => (m.taunt || 0) > 0);
+  if (taunting) return taunting;
   const tank = alive.find(m => compStats(s, m.id).role === "tank");
   if (tank && rnd() < 0.85) return tank;
   if (!alive.length || rnd() < 0.5) return null;
@@ -1415,6 +1445,9 @@ function partyTick(s, d, dt) {
     const cs = compStats(s, m.id);
     m.max = cs.max;
     f.hp -= cs.dps * dt * (1 - dr(f.def, s.level));
+    if (m.taunt > 0) m.taunt -= dt;
+    m.cd = (m.cd == null ? 4 + rnd() * 4 : m.cd) - dt; // first use a few seconds into the first fight
+    if (m.cd <= 0 && f.hp > 0) fireSignature(s, d, m, cs);
     if (cs.heal) {
       // heal whoever is lowest, hero included
       let low = { r: s.hp / d.hp, hero: true };
@@ -1995,6 +2028,7 @@ function hydrate(o) {
   if (o.foe) { o.foe.dots = Array.isArray(o.foe.dots) ? o.foe.dots : []; o.foe.stun = num(o.foe.stun, 0, 0); o.foe.atkT = num(o.foe.atkT, 0, 0); o.foe.aspd = num(o.foe.aspd, 1, 0.1, 5); o.foe.def = num(o.foe.def, 0, 0); }
   if (o.mode === "fight" && !o.foe) o.mode = "seek";
   if (o.run && (!DUNGEONS[o.run.d] || !Array.isArray(o.run.party))) o.run = null;
+  if (o.run) { o.run.party = o.run.party.filter(m => m && COMPANIONS.some(c => c.id === m.id)); for (const m of o.run.party) { m.max = num(m.max, 1, 1); m.hp = num(m.hp, m.max, 0, m.max); if (m.cd != null) m.cd = num(m.cd, 0, 0, 60); m.taunt = num(m.taunt, 0, 0, 60); } }
   const nAb = CLASSES[o.cls].abilities.length;
   o.loadout = Array.isArray(o.loadout) ? [...new Set(o.loadout.filter(i => Number.isInteger(i) && i >= 0 && i < nAb))].slice(0, 3) : [];
   if (!o.loadout.length) o.loadout = [0, 1, 2];
@@ -2178,7 +2212,7 @@ function renderPane() {
       const open = compUnlocked(S, c), rank = (S.comp[c.id] || {}).rank || 0, cost = bondCost(S, c.id);
       if (!open) { h += `<div class="item card locked"><span><b>???</b><span class="sub">Defeat ${ZONES[c.from].boss.name} to recruit.</span></span></div>`; continue; }
       const cs = compStats(S, c.id);
-      h += `<div class="item"><span><b>${esc(c.name)}</b> <span class="role">${ROLE_LABEL[c.role]}</span><span class="sub">${esc(c.blurb)}</span><span class="sub">Bond ${rank}/10 · ${fmt(cs.max)} hp · ${fmt(cs.dps)} dps${cs.heal ? ` · heals ${fmt(cs.heal)}/s` : ""}</span></span>
+      h += `<div class="item"><span><b>${esc(c.name)}</b> <span class="role">${ROLE_LABEL[c.role]}</span><span class="sub">${esc(c.blurb)}</span><span class="sub">Bond ${rank}/10 · ${fmt(cs.max)} hp · ${fmt(cs.dps)} dps${cs.heal ? ` · heals ${fmt(cs.heal)}/s` : ""}</span>${SIGNATURES[c.id] ? `<span class="sub"><b>${esc(SIGNATURES[c.id].name)}</b> every ${SIGNATURES[c.id].cd} s: ${esc(SIGNATURES[c.id].desc)}</span>` : ""}</span>
         <span class="btns"><button class="btn small" data-bond="${c.id}" ${rank >= 10 || S.marks < cost ? "disabled" : ""}>Bond +1 · ${cost}</button></span></div>`;
     }
   }
@@ -2255,7 +2289,7 @@ function renderPane() {
       h += `<div class="card"><h3>${zz.name}</h3><p>${zz.blurb}</p>${foes}${S.bosses[i] ? `<div class="beast"><span><b>${zz.boss.name}</b>, ${zz.boss.title}<span class="sub">${bossLine(S, zz)}</span></span><span class="num">${fk[zz.boss.name] || 0}</span></div>` : ""}</div>`;
     });
     const met = COMPANIONS.filter(c => S.bosses[c.from]);
-    if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${{ dps: "Damage", healer: "Healer", tank: "Tank" }[c.role] || c.role}<span class="sub">${c.blurb}</span></span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
+    if (met.length) h += `<div class="card"><h3>Companions</h3>${met.map(c => `<div class="beast"><span><b>${c.name}</b> · ${{ dps: "Damage", healer: "Healer", tank: "Tank" }[c.role] || c.role}<span class="sub">${c.blurb}</span>${SIGNATURES[c.id] ? `<span class="sub">Signature: ${esc(SIGNATURES[c.id].name)}</span>` : ""}</span><span class="num">Bond ${(S.comp[c.id] || {}).rank || 0}</span></div>`).join("")}</div>`;
     h += `<div class="card"><h3>Record</h3><div class="sum">
       <div><span class="label">Kills</span><span class="num">${fmt(S.stats.kills)}</span></div><div><span class="label">Bosses</span><span class="num">${S.stats.bosses}</span></div>
       <div><span class="label">Instances</span><span class="num">${S.stats.runs || 0}</span></div><div><span class="label">Deaths</span><span class="num">${S.stats.deaths}</span></div>
@@ -2326,7 +2360,7 @@ function renderLive() {
   $("hEnBar").style.width = S.en + "%";
   const mode = { fight: "In combat", seek: "Searching", rest: "Resting", idle: "Standing by", dead: "Down", mine: "Mining" }[S.mode];
   $("hState").textContent = mode;
-  $("aHeroMeta").textContent = `Lv ${S.level} ${CLASSES[S.cls].name}${S.stim > 0 ? " · Stimmed" : ""}${S.buffs.length ? " · " + S.buffs.map(b => b.id === "surge" ? "Surge" : CLASSES[S.cls].abilities.find(a => a.id === b.id)?.name).filter(Boolean).join(", ") : ""}`;
+  $("aHeroMeta").textContent = `Lv ${S.level} ${CLASSES[S.cls].name}${S.stim > 0 ? " · Stimmed" : ""}${S.buffs.length ? " · " + S.buffs.map(b => b.id === "surge" ? "Surge" : b.id === "ambush" ? "Ambushed" : CLASSES[S.cls].abilities.find(a => a.id === b.id)?.name).filter(Boolean).join(", ") : ""}`;
   const fe = $("aFoe");
   fe.classList.toggle("boss", !!(f && (f.boss || f.elite)));
   if (f) {
@@ -2848,6 +2882,12 @@ function processFx(L) {
       if (S.foe && RANGED.has(foeLook(S.foe.name).kind)) R.shots.push({ x1: foeX - 20 * L.k, y1: foeY, x2: tgt.x, y2: tgt.y, life: 1, col: foeLook(S.foe.name).pal.glow });
       if (e.to === "hero") { R.hero.flash = 1; addText(heroX + (Math.random() - .5) * 20, heroY - 34 * L.k, fmt(e.dmg), "#ff7b6b", false); sfx("hurt"); }
       if (S.foe && S.foe.boss) R.shake = Math.max(R.shake, .4);
+    } else if (e.type === "sig") {
+      const pos = L.comps[e.to] || { x: heroX, y: heroY + 6 * L.k }, col = { dmg: "#ffd84a", heal: "#7cf08a", taunt: "#9ad9ff" }[e.kind];
+      addText(pos.x, pos.y - 70 * L.k, e.name, col, false);
+      if (e.kind === "dmg") { R.shots.push({ x1: pos.x + 20 * L.k, y1: pos.y - 40 * L.k, x2: foeX, y2: foeY, life: 1, col, kind: "sig" }); burst(foeX, foeY, col, 12, 4); R.foe.flash = 1; if (e.dmg) addText(foeX + (Math.random() - .5) * 30, foeY - 44 * L.k, fmt(e.dmg), col, true); sfx("ability"); }
+      else if (e.kind === "heal") { burst(pos.x, pos.y + 10 * L.k, col, 14, 1.5, 3); sfx("heal"); }
+      else { R.auras.push({ who: "comp" + e.to, col, life: 1, ring: true }); sfx("shield"); }
     } else if (e.type === "dodge") addText(heroX, heroY - 34 * L.k, "dodge", "#9ad9ff", false);
     else if (e.type === "flee") { addText(heroX, heroY - 60 * L.k, "Fled!", "#e8b43c", true); burst(heroX, heroY + 30 * L.k, "#8a7a5a", 14, 4, 2); R.foe.x = 0; sfx("flee"); }
     else if (e.type === "ability") {
@@ -2955,7 +2995,7 @@ function renderScene(now) {
   }
   R.shots = R.shots.filter(s => s.life > -.2);
   // auras
-  for (const a of R.auras) { a.life -= dt * 1.2; c.beginPath(); const r = (1 - a.life) * 60 * L.k + 20 * L.k; c.ellipse(L.hero.x, L.hero.y - 40 * L.k, r, r * 1.2, 0, 0, Math.PI * 2); c.strokeStyle = a.col; c.globalAlpha = Math.max(0, a.life); c.lineWidth = 3; c.stroke(); c.globalAlpha = 1; }
+  for (const a of R.auras) { a.life -= dt * 1.2; c.beginPath(); const r = (1 - a.life) * 60 * L.k + 20 * L.k, at = a.who && a.who.startsWith("comp") && L.comps[+a.who.slice(4)] || L.hero; c.ellipse(at.x, at.y - 40 * L.k, r, r * 1.2, 0, 0, Math.PI * 2); c.strokeStyle = a.col; c.globalAlpha = Math.max(0, a.life); c.lineWidth = 3; c.stroke(); c.globalAlpha = 1; }
   R.auras = R.auras.filter(a => a.life > 0);
   // particles
   for (const p of R.parts) { p.x += p.vx; p.y += p.vy; p.vy += .08; p.life -= dt * p.decay; c.globalAlpha = Math.max(0, p.life); c.fillStyle = p.col; c.fillRect(p.x, p.y, p.size, p.size); }
